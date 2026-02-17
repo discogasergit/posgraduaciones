@@ -5,7 +5,8 @@ export const PRICES = {
   GRADUATE_BASE: 85, // Cena + Barra
   GUEST_FULL: 85,    // Cena + Barra
   GUEST_PARTY: 50,   // Solo Barra
-  BUS_ADDON: 7
+  BUS_ADDON: 7,
+  MANAGEMENT_FEE: 1.50 // Gastos de gestión
 };
 
 // If in production (Render), use relative path "/api". 
