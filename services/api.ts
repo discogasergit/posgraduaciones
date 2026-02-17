@@ -1,3 +1,4 @@
+
 import { API_URL, USE_MOCK_API, MOCK_GRADUATES, PRICES, ADMIN_PASSWORD, DELEGATE_PASSWORD } from '../constants';
 import { Graduate, Ticket, CartItem, ScanResult, ScanMode, AdminStats } from '../types';
 
@@ -204,6 +205,27 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ uuid, mode })
     });
+    return res.json();
+  },
+
+  // --- DEBUG METHODS ---
+  debugTestEmail: async (email: string) => {
+    const res = await fetch(`${API_URL}/debug/email`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email })
+    });
+    if (!res.ok) throw new Error('Error enviando email');
+    return res.json();
+  },
+
+  debugBypassPayment: async (cart: CartItem): Promise<Ticket> => {
+    const res = await fetch(`${API_URL}/debug/bypass-payment`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(cart)
+    });
+    if (!res.ok) throw new Error('Error simulando pago');
     return res.json();
   }
 };
