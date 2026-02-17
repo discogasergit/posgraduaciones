@@ -4,6 +4,7 @@ const express = require('express');
 const cors = require('cors');
 const crypto = require('crypto');
 const path = require('path'); // Import path
+const nodemailer = require('nodemailer'); // Import Nodemailer
 const { Graduate, Order, Ticket } = require('./database');
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -22,7 +23,6 @@ if (!process.env.MONGODB_URI) {
 }
 
 // --- CONFIG ---
-// Now using Environment Variables for Security
 const REDSYS_CONFIG = {
   fuc: process.env.REDSYS_FUC,
   terminal: process.env.REDSYS_TERMINAL,
@@ -35,6 +35,55 @@ const PASSWORDS = {
     ADMIN: process.env.ADMIN_PASSWORD,
     DELEGATE: process.env.DELEGATE_PASSWORD
 };
+
+// --- EMAIL CONFIG (NODEMAILER) ---
+const transporter = nodemailer.createTransport({
+  host: process.env.SMTP_HOST,
+  port: process.env.SMTP_PORT || 587,
+  secure: process.env.SMTP_SECURE === 'true', // true for 465, false for other ports
+  auth: {
+    user: process.env.SMTP_USER,
+    pass: process.env.SMTP_PASS,
+  },
+});
+
+// Helper to send email
+async function sendWelcomeEmail(to, name, dni, password) {
+  // If no SMTP user configured, fallback to console (Development mode)
+  if (!process.env.SMTP_USER) {
+    console.log(`[EMAIL SIMULATION] To: ${to} | Pass: ${password}`);
+    return;
+  }
+
+  const loginUrl = process.env.PUBLIC_URL || 'https://tu-dominio.com';
+
+  const mailOptions = {
+    from: process.env.SMTP_FROM || '"Graduación 2026" <noreply@graduacion.com>',
+    to: to,
+    subject: '🎓 Tu Acceso a la Graduación 2026',
+    html: `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e0e0e0; border-radius: 10px;">
+        <h2 style="color: #4f46e5; text-align: center;">¡Bienvenido a la Graduación 2026!</h2>
+        <p>Hola <strong>${name}</strong>,</p>
+        <p>Se te ha dado de alta en la plataforma de gestión de entradas.</p>
+        
+        <div style="background-color: #f3f4f6; padding: 15px; border-radius: 8px; margin: 20px 0;">
+          <p style="margin: 5px 0;"><strong>DNI:</strong> ${dni}</p>
+          <p style="margin: 5px 0;"><strong>Contraseña:</strong> <span style="font-size: 18px; color: #4f46e5; font-weight: bold;">${password}</span></p>
+        </div>
+
+        <p>Por favor, accede a la web para comprar tu entrada y obtener tus invitaciones:</p>
+        <p style="text-align: center;">
+          <a href="${loginUrl}" style="background-color: #4f46e5; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; font-weight: bold;">Acceder a la Plataforma</a>
+        </p>
+        <hr style="border: none; border-top: 1px solid #eee; margin: 20px 0;">
+        <p style="font-size: 12px; color: #888; text-align: center;">Si no has solicitado esto, ignora este mensaje.</p>
+      </div>
+    `
+  };
+
+  await transporter.sendMail(mailOptions);
+}
 
 // --- HELPERS ---
 function encrypt3DES(str, key) {
@@ -254,16 +303,7 @@ app.get('/api/admin/stats', async (req, res) => {
   }
 });
 
-// 9. Admin Graduates
-app.get('/api/admin/graduates', async (req, res) => {
-  try {
-    const grads = await Graduate.find().sort({ nombre: 1 });
-    res.json(grads);
-  } catch (err) {
-    res.status(500).json([]);
-  }
-});
-
+// 9. Admin Graduates (Create)
 app.post('/api/admin/graduates', async (req, res) => {
   try {
     const { dni, nombre, email, telefono } = req.body;
@@ -279,20 +319,29 @@ app.post('/api/admin/graduates', async (req, res) => {
       password
     });
       
-    // LOG SIMULATED EMAIL
-    console.log(`[EMAIL SIMULATION] Sending to ${email}: Welcome ${nombre}, your password is ${password}`);
+    // Send Email via Nodemailer
+    await sendWelcomeEmail(email, nombre, dni.toUpperCase(), password);
     
     res.json({ id: newGrad._id, password });
   } catch (err) {
+    console.error("Error creating graduate:", err);
     res.status(500).json({ error: err.message });
   }
 });
 
+// 10. Admin Graduates (List)
+app.get('/api/admin/graduates', async (req, res) => {
+  try {
+    const grads = await Graduate.find().sort({ nombre: 1 });
+    res.json(grads);
+  } catch (err) {
+    res.status(500).json([]);
+  }
+});
+
 // --- SERVE FRONTEND (MUST BE LAST) ---
-// Serve static files from the 'dist' directory (Vite build output)
 app.use(express.static(path.join(__dirname, '../dist')));
 
-// Catch-all route to serve index.html for non-API requests
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, '../dist/index.html'));
 });
