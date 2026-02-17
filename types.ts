@@ -5,7 +5,7 @@ export enum UserType {
 }
 
 export interface Graduate {
-  id: string | number; // Updated to support MongoDB _id (string)
+  id: string | number; 
   dni: string;
   nombre: string;
   email?: string;
@@ -28,7 +28,7 @@ export interface CartItem {
   basePrice: number;
   bus: boolean;
   total: number;
-  graduateId?: string | number; // Updated to support MongoDB _id
+  graduateId?: string | number; 
   guestName?: string;
 }
 
@@ -39,12 +39,14 @@ export interface Ticket {
   tiene_cena: boolean;
   tiene_bus: boolean;
   tiene_barra: boolean;
-  estado_cena: boolean;
-  estado_bus: boolean;
-  estado_barra: boolean;
+  // Usage flags
+  used_cena: boolean;
+  used_barra: boolean;
+  used_bus_ida: boolean;    // New
+  used_bus_vuelta: boolean; // New
 }
 
-export type ScanMode = 'CENA' | 'BARRA' | 'BUS';
+export type ScanMode = 'CENA' | 'BARRA' | 'BUS_IDA' | 'BUS_VUELTA';
 
 export interface ScanResult {
   success: boolean;
