@@ -37,30 +37,47 @@ const PASSWORDS = {
 };
 
 // --- EMAIL CONFIG (NODEMAILER) ---
-// Configuración robusta para depuración
-const transporter = nodemailer.createTransport({
-  host: process.env.SMTP_HOST,
-  port: parseInt(process.env.SMTP_PORT || '587'),
-  secure: process.env.SMTP_SECURE === 'true', // true para 465, false para otros
-  auth: {
-    user: process.env.SMTP_USER,
-    pass: process.env.SMTP_PASS,
-  },
-  // Habilitar logs detallados para ver donde se atasca
-  logger: true, 
-  debug: true,
-  tls: {
-      rejectUnauthorized: false // Ayuda en entornos de desarrollo local
-  },
-  connectionTimeout: 10000, // 10 segundos timeout para no quedarse colgado eternamente
-  greetingTimeout: 5000,
-  socketTimeout: 10000
-});
+// Detectar si es Gmail para usar configuración optimizada y evitar Timeouts
+const isGmail = (process.env.SMTP_HOST && process.env.SMTP_HOST.includes('gmail')) || 
+                (process.env.SMTP_USER && process.env.SMTP_USER.includes('@gmail'));
+
+console.log(`📧 Configurando Email... Proveedor detectado: ${isGmail ? 'GMAIL (Modo Optimizado)' : 'GENÉRICO'}`);
+
+const transporterConfig = isGmail 
+  ? {
+      service: 'gmail', // IMPORTANTE: Esto arregla el Timeout con Google
+      auth: {
+        user: process.env.SMTP_USER,
+        pass: process.env.SMTP_PASS, // Debe ser App Password (16 letras)
+      },
+      logger: true,
+      debug: true
+    }
+  : {
+      host: process.env.SMTP_HOST,
+      port: parseInt(process.env.SMTP_PORT || '587'),
+      secure: process.env.SMTP_SECURE === 'true',
+      auth: {
+        user: process.env.SMTP_USER,
+        pass: process.env.SMTP_PASS,
+      },
+      tls: {
+          rejectUnauthorized: false
+      },
+      connectionTimeout: 10000,
+      logger: true,
+      debug: true
+    };
+
+const transporter = nodemailer.createTransport(transporterConfig);
 
 // Verificar conexión al iniciar (Async)
 transporter.verify(function (error, success) {
   if (error) {
-    console.error('❌ Error de conexión SMTP (Verifica tus credenciales y puerto):', error);
+    console.error('❌ Error de conexión SMTP:', error.message);
+    if (isGmail && error.code === 'EAUTH') {
+        console.error("👉 PISTA GMAIL: Asegúrate de estar usando una 'Contraseña de Aplicación' y no tu contraseña normal.");
+    }
   } else {
     console.log('✅ Servidor SMTP conectado y listo para enviar correos.');
   }
