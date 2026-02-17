@@ -1,9 +1,10 @@
+
 import React, { useState } from 'react';
 import { api } from '../services/api';
 import { CartItem, UserType } from '../types';
 import { PRICES, USE_MOCK_API } from '../constants';
 import { Button } from '../components/Button';
-import { Bus, CreditCard, ArrowLeft } from 'lucide-react';
+import { Bus, CreditCard, ArrowLeft, Receipt } from 'lucide-react';
 
 interface CheckoutProps {
   cart: CartItem;
@@ -15,7 +16,8 @@ export const Checkout: React.FC<CheckoutProps> = ({ cart, onBack, onSuccess }) =
   const [addBus, setAddBus] = useState(false);
   const [loading, setLoading] = useState(false);
 
-  const total = cart.basePrice + (addBus ? PRICES.BUS_ADDON : 0);
+  // Calculate total with Management Fee
+  const total = cart.basePrice + (addBus ? PRICES.BUS_ADDON : 0) + PRICES.MANAGEMENT_FEE;
 
   const handlePayment = async () => {
     setLoading(true);
@@ -97,6 +99,18 @@ export const Checkout: React.FC<CheckoutProps> = ({ cart, onBack, onSuccess }) =
                 </div>
               </div>
             </div>
+          </div>
+
+          {/* Management Fee */}
+          <div className="flex justify-between items-center py-2 border-b border-slate-100">
+            <div className="flex items-center">
+              <Receipt size={16} className="text-slate-400 mr-2" />
+              <div>
+                <p className="font-semibold text-slate-800">Gastos de gestión</p>
+                <p className="text-xs text-slate-500">Plataforma y pasarela de pago</p>
+              </div>
+            </div>
+            <span className="font-mono font-medium">{PRICES.MANAGEMENT_FEE.toFixed(2)}€</span>
           </div>
 
           {/* Total */}
