@@ -339,6 +339,62 @@ app.get('/api/admin/graduates', async (req, res) => {
   }
 });
 
+// --- DEBUG ENDPOINTS ---
+
+// DEBUG: Test Email
+app.post('/api/debug/email', async (req, res) => {
+  try {
+    const { email } = req.body;
+    if (!process.env.SMTP_USER) return res.status(400).json({ error: 'SMTP no configurado en .env' });
+    
+    await transporter.sendMail({
+      from: process.env.SMTP_FROM,
+      to: email,
+      subject: '🧪 Prueba de Correo - Graduación',
+      text: 'Si lees esto, el sistema de correos funciona correctamente.'
+    });
+    res.json({ success: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// DEBUG: Bypass Payment (Direct Ticket Creation)
+app.post('/api/debug/bypass-payment', async (req, res) => {
+  try {
+    const cart = req.body;
+    const orderId = 'TEST-' + Date.now().toString().slice(-8);
+    
+    await Order.create({ order_id: orderId, amount: cart.total, status: 'PAID' });
+    
+    if (cart.type === 'GRADUATE') {
+      let inviteCode = 'INV-' + orderId.slice(-6); 
+      await Graduate.findByIdAndUpdate(cart.graduateId, { 
+        pagado: true, 
+        codigo_invitacion: inviteCode 
+      });
+    }
+
+    const ticketUUID = crypto.randomUUID();
+    const newTicket = await Ticket.create({
+      uuid: ticketUUID,
+      order_id: orderId,
+      type: cart.type,
+      inviter_id: cart.graduateId,
+      nombre_titular: cart.guestName,
+      tiene_cena: (cart.basePrice >= 85),
+      tiene_barra: true,
+      tiene_bus: cart.bus
+    });
+
+    res.json(newTicket);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // --- SERVE FRONTEND (MUST BE LAST) ---
 app.use(express.static(path.join(__dirname, '../dist')));
 
