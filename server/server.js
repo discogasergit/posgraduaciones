@@ -5,7 +5,18 @@ const cors = require('cors');
 const crypto = require('crypto');
 const path = require('path'); // Import path
 const nodemailer = require('nodemailer'); // Import Nodemailer
+const net = require('net'); // For network diagnostics
+const dns = require('dns'); // For DNS settings
 const { Graduate, Order, Ticket } = require('./database');
+
+// --- CRITICAL FIX FOR RENDER/GMAIL TIMEOUTS ---
+// Node 17+ prefers IPv6 by default. Cloud containers often have broken IPv6 routing to Google.
+// We force IPv4 first.
+if (dns.setDefaultResultOrder) {
+  dns.setDefaultResultOrder('ipv4first');
+  console.log("🌍 Red: Forzando resolución IPv4 para evitar timeouts con Gmail.");
+}
+
 const app = express();
 const PORT = process.env.PORT || 3000;
 
@@ -37,33 +48,39 @@ const PASSWORDS = {
 };
 
 // --- EMAIL CONFIG (NODEMAILER) ---
-// Detectar si es Gmail para usar configuración optimizada y evitar Timeouts
 const isGmail = (process.env.SMTP_HOST && process.env.SMTP_HOST.includes('gmail')) || 
                 (process.env.SMTP_USER && process.env.SMTP_USER.includes('@gmail'));
 
-console.log(`📧 Configurando Email... Proveedor detectado: ${isGmail ? 'GMAIL (Modo Optimizado)' : 'GENÉRICO'}`);
+console.log(`📧 Configurando Email... Proveedor: ${isGmail ? 'GMAIL' : 'GENÉRICO'}`);
 
+// Configuración ESPECÍFICA para máxima compatibilidad con servidores Cloud
 const transporterConfig = isGmail 
   ? {
-      service: 'gmail', // IMPORTANTE: Esto arregla el Timeout con Google
+      host: 'smtp.gmail.com',
+      port: 465, // Usamos 465 (SSL) en lugar de 587 (STARTTLS) para evitar problemas de handshake
+      secure: true, 
       auth: {
         user: process.env.SMTP_USER,
-        pass: process.env.SMTP_PASS, // Debe ser App Password (16 letras)
+        pass: process.env.SMTP_PASS, 
       },
+      // Opciones de socket para evitar bloqueos
+      tls: {
+          rejectUnauthorized: false
+      },
+      connectionTimeout: 10000, 
+      socketTimeout: 10000,
       logger: true,
       debug: true
     }
   : {
       host: process.env.SMTP_HOST,
-      port: parseInt(process.env.SMTP_PORT || '465'),
+      port: parseInt(process.env.SMTP_PORT || '587'),
       secure: process.env.SMTP_SECURE === 'true',
       auth: {
         user: process.env.SMTP_USER,
         pass: process.env.SMTP_PASS,
       },
-      tls: {
-          rejectUnauthorized: false
-      },
+      tls: { rejectUnauthorized: false },
       connectionTimeout: 10000,
       logger: true,
       debug: true
@@ -71,15 +88,12 @@ const transporterConfig = isGmail
 
 const transporter = nodemailer.createTransport(transporterConfig);
 
-// Verificar conexión al iniciar (Async)
+// Verificar conexión al iniciar
 transporter.verify(function (error, success) {
   if (error) {
-    console.error('❌ Error de conexión SMTP:', error.message);
-    if (isGmail && error.code === 'EAUTH') {
-        console.error("👉 PISTA GMAIL: Asegúrate de estar usando una 'Contraseña de Aplicación' y no tu contraseña normal.");
-    }
+    console.error('❌ Error SMTP al iniciar:', error.message);
   } else {
-    console.log('✅ Servidor SMTP conectado y listo para enviar correos.');
+    console.log('✅ Servidor SMTP conectado y listo.');
   }
 });
 
@@ -388,7 +402,6 @@ app.post('/api/debug/email', async (req, res) => {
   try {
     const { email } = req.body;
     if (!process.env.SMTP_USER) {
-        console.error("❌ SMTP User no configurado");
         return res.status(400).json({ error: 'SMTP no configurado en .env' });
     }
     
@@ -405,6 +418,38 @@ app.post('/api/debug/email', async (req, res) => {
     console.error("❌ [DEBUG] Error enviando email:", err);
     res.status(500).json({ error: err.message || "Timeout o error de conexión SMTP" });
   }
+});
+
+// DEBUG: Connectivity Check (Ping TCP)
+app.get('/api/debug/connectivity', async (req, res) => {
+    const results = {};
+    const checkPort = (host, port) => new Promise(resolve => {
+        const socket = new net.Socket();
+        socket.setTimeout(3000); // 3s timeout
+        socket.on('connect', () => {
+            socket.destroy();
+            resolve('✅ CONECTADO');
+        });
+        socket.on('timeout', () => {
+            socket.destroy();
+            resolve('❌ TIMEOUT (Bloqueado o Lento)');
+        });
+        socket.on('error', (err) => {
+            socket.destroy();
+            resolve(`❌ ERROR: ${err.message}`);
+        });
+        socket.connect(port, host);
+    });
+
+    try {
+        results['smtp.gmail.com:465 (SSL)'] = await checkPort('smtp.gmail.com', 465);
+        results['smtp.gmail.com:587 (TLS)'] = await checkPort('smtp.gmail.com', 587);
+        results['google.com:80'] = await checkPort('google.com', 80);
+    } catch(e) {
+        results['error'] = e.message;
+    }
+
+    res.json(results);
 });
 
 // DEBUG: Bypass Payment (Direct Ticket Creation)
