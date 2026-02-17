@@ -219,6 +219,11 @@ export const api = {
     return res.json();
   },
 
+  debugCheckConnectivity: async (): Promise<any> => {
+    const res = await fetch(`${API_URL}/debug/connectivity`);
+    return res.json();
+  },
+
   debugBypassPayment: async (cart: CartItem): Promise<Ticket> => {
     const res = await fetch(`${API_URL}/debug/bypass-payment`, {
         method: 'POST',
