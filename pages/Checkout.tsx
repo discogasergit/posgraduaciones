@@ -4,7 +4,7 @@ import { api } from '../services/api';
 import { CartItem, UserType } from '../types';
 import { PRICES, USE_MOCK_API } from '../constants';
 import { Button } from '../components/Button';
-import { Bus, CreditCard, ArrowLeft, Receipt } from 'lucide-react';
+import { Bus, CreditCard, ArrowLeft, Receipt, TestTube } from 'lucide-react';
 
 interface CheckoutProps {
   cart: CartItem;
@@ -53,6 +53,19 @@ export const Checkout: React.FC<CheckoutProps> = ({ cart, onBack, onSuccess }) =
       alert('Error iniciando el pago');
       setLoading(false);
     }
+  };
+  
+  const handleSimulatePayment = async () => {
+      if(!confirm("¿Estás seguro? Esto creará una entrada válida en la BD sin pagar.")) return;
+      setLoading(true);
+      const finalCart = { ...cart, bus: addBus, total };
+      try {
+          const ticket = await api.debugBypassPayment(finalCart);
+          onSuccess(ticket);
+      } catch (e) {
+          alert('Error en simulación');
+          setLoading(false);
+      }
   };
 
   return (
@@ -127,6 +140,11 @@ export const Checkout: React.FC<CheckoutProps> = ({ cart, onBack, onSuccess }) =
           <Button fullWidth onClick={handlePayment} isLoading={loading}>
             <CreditCard size={18} className="mr-2" />
             Pagar Ahora
+          </Button>
+          
+          <Button fullWidth onClick={handleSimulatePayment} isLoading={loading} className="bg-slate-200 text-slate-600 hover:bg-slate-300 mt-2">
+            <TestTube size={18} className="mr-2" />
+            Simular Pago (Debug)
           </Button>
         </div>
       </div>
