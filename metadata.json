@@ -1,0 +1,7 @@
+{
+  "name": "GraduCheck - Ticketing System",
+  "description": "A comprehensive graduation event management system featuring role-based access (Graduate/Guest), strict capacity control, Redsys payment integration, and QR code access validation.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
