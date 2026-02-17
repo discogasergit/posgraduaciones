@@ -3,7 +3,6 @@
 const mongoose = require('mongoose');
 
 // Connect to MongoDB
-// Ensure process.env.MONGODB_URI is set in Render/Vultr
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/graduation_event';
 
 mongoose.connect(MONGODB_URI)
@@ -19,10 +18,9 @@ const graduateSchema = new mongoose.Schema({
   telefono: { type: String },
   password: { type: String },
   pagado: { type: Boolean, default: false },
-  codigo_invitacion: { type: String, unique: true, sparse: true } // sparse allow nulls to not be unique
+  codigo_invitacion: { type: String, unique: true, sparse: true } 
 });
 
-// Virtual for 'id' to match frontend expectations
 graduateSchema.set('toJSON', {
   virtuals: true,
   versionKey: false,
@@ -43,14 +41,19 @@ const ticketSchema = new mongoose.Schema({
   uuid: { type: String, required: true, unique: true },
   order_id: { type: String },
   type: { type: String, enum: ['GRADUATE', 'GUEST'] },
-  inviter_id: { type: String }, // MongoDB ObjectId as string
+  inviter_id: { type: String }, 
   nombre_titular: { type: String },
+  
+  // Entitlements
   tiene_cena: { type: Boolean, default: false },
   tiene_barra: { type: Boolean, default: true },
   tiene_bus: { type: Boolean, default: false },
+  
+  // Usage Tracking
   used_cena: { type: Boolean, default: false },
   used_barra: { type: Boolean, default: false },
-  used_bus: { type: Boolean, default: false }
+  used_bus_ida: { type: Boolean, default: false },    // Changed from generic used_bus
+  used_bus_vuelta: { type: Boolean, default: false }  // Changed from generic used_bus
 });
 
 // --- MODELS ---
