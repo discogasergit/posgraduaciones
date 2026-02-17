@@ -1,8 +1,9 @@
+
 import React, { useEffect, useState } from 'react';
 import { api } from '../services/api';
 import { AdminStats, Graduate } from '../types';
 import { Button } from '../components/Button';
-import { ArrowLeft, QrCode, TrendingUp, Users, Plus, RefreshCw, Mail } from 'lucide-react';
+import { ArrowLeft, QrCode, TrendingUp, Users, Plus, RefreshCw, Mail, Beaker } from 'lucide-react';
 
 interface AdminDashboardProps {
   onScan: () => void;
@@ -13,11 +14,15 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onScan, onLogout
   const [stats, setStats] = useState<AdminStats | null>(null);
   const [graduates, setGraduates] = useState<Graduate[]>([]);
   const [loading, setLoading] = useState(true);
-  const [view, setView] = useState<'STATS' | 'GRADUATES'>('STATS');
+  const [view, setView] = useState<'STATS' | 'GRADUATES' | 'DEBUG'>('STATS');
   
   // New Grad Form
   const [form, setForm] = useState({ dni: '', nombre: '', email: '', telefono: '' });
   const [addLoading, setAddLoading] = useState(false);
+
+  // Debug Email Form
+  const [debugEmail, setDebugEmail] = useState('');
+  const [debugLoading, setDebugLoading] = useState(false);
 
   const loadData = async () => {
     setLoading(true);
@@ -60,6 +65,19 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onScan, onLogout
     }
   };
 
+  const handleTestEmail = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setDebugLoading(true);
+    try {
+        await api.debugTestEmail(debugEmail);
+        alert('✅ Email enviado correctamente. Revisa tu bandeja de entrada (y spam).');
+    } catch (e) {
+        alert('❌ Error enviando email. Revisa la consola del servidor.');
+    } finally {
+        setDebugLoading(false);
+    }
+  };
+
   const inputClass = "border border-slate-300 p-2 rounded bg-white text-slate-900 focus:ring-2 focus:ring-indigo-500 outline-none w-full";
 
   return (
@@ -87,10 +105,17 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onScan, onLogout
            <Users size={18} className="mr-2" /> Graduados
          </Button>
          <Button 
-            onClick={onScan}
-            className="bg-indigo-600 hover:bg-indigo-700 col-span-2 md:col-span-2"
+            variant={view === 'DEBUG' ? 'primary' : 'outline'} 
+            onClick={() => setView('DEBUG')}
+            className={view === 'DEBUG' ? "bg-slate-800 hover:bg-slate-900" : ""}
           >
-           <QrCode size={18} className="mr-2" /> ABRIR ESCÁNER
+           <Beaker size={18} className="mr-2" /> Depuración
+         </Button>
+         <Button 
+            onClick={onScan}
+            className="bg-indigo-600 hover:bg-indigo-700 md:col-span-1"
+          >
+           <QrCode size={18} className="mr-2" /> ESCÁNER
          </Button>
       </div>
 
@@ -113,6 +138,33 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onScan, onLogout
             <p className="text-sm text-slate-500 uppercase font-bold">Plazas Autobús</p>
             <p className="text-3xl font-bold text-slate-800">{stats.total_bus}</p>
           </div>
+        </div>
+      ) : view === 'DEBUG' ? (
+        <div className="max-w-xl mx-auto">
+            <div className="bg-white p-6 rounded-xl shadow border border-slate-200">
+                <h3 className="text-lg font-bold text-slate-800 mb-4 flex items-center">
+                    <Mail size={20} className="mr-2 text-indigo-600" /> Probar Envío de Emails
+                </h3>
+                <p className="text-sm text-slate-500 mb-4">
+                    Envía un correo de prueba para verificar que la configuración SMTP es correcta.
+                </p>
+                <form onSubmit={handleTestEmail} className="space-y-4">
+                    <input 
+                        type="email" 
+                        placeholder="tu-email@ejemplo.com"
+                        className={inputClass}
+                        value={debugEmail}
+                        onChange={(e) => setDebugEmail(e.target.value)}
+                        required
+                    />
+                    <Button type="submit" isLoading={debugLoading} fullWidth>
+                        Enviar Correo de Prueba
+                    </Button>
+                </form>
+            </div>
+            <div className="mt-6 bg-yellow-50 p-4 rounded-lg border border-yellow-200 text-sm text-yellow-800">
+                <p><strong>Nota:</strong> Si estás usando Gmail, asegúrate de haber generado una "Contraseña de Aplicación".</p>
+            </div>
         </div>
       ) : (
         <div className="space-y-8">
