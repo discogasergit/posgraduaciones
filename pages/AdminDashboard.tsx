@@ -3,7 +3,7 @@ import React, { useEffect, useState } from 'react';
 import { api } from '../services/api';
 import { AdminStats, Graduate } from '../types';
 import { Button } from '../components/Button';
-import { ArrowLeft, QrCode, TrendingUp, Users, Plus, RefreshCw, Mail, Beaker } from 'lucide-react';
+import { ArrowLeft, QrCode, TrendingUp, Users, Plus, RefreshCw, Mail, Beaker, Wifi } from 'lucide-react';
 
 interface AdminDashboardProps {
   onScan: () => void;
@@ -78,6 +78,18 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onScan, onLogout
     }
   };
 
+  const handleCheckConnectivity = async () => {
+    setDebugLoading(true);
+    try {
+        const res = await api.debugCheckConnectivity();
+        alert("📊 Reporte de Red:\n\n" + JSON.stringify(res, null, 2));
+    } catch (e) {
+        alert("❌ Error contactando con el servidor");
+    } finally {
+        setDebugLoading(false);
+    }
+  };
+
   const inputClass = "border border-slate-300 p-2 rounded bg-white text-slate-900 focus:ring-2 focus:ring-indigo-500 outline-none w-full";
 
   return (
@@ -140,7 +152,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onScan, onLogout
           </div>
         </div>
       ) : view === 'DEBUG' ? (
-        <div className="max-w-xl mx-auto">
+        <div className="max-w-xl mx-auto space-y-6">
             <div className="bg-white p-6 rounded-xl shadow border border-slate-200">
                 <h3 className="text-lg font-bold text-slate-800 mb-4 flex items-center">
                     <Mail size={20} className="mr-2 text-indigo-600" /> Probar Envío de Emails
@@ -162,8 +174,21 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onScan, onLogout
                     </Button>
                 </form>
             </div>
-            <div className="mt-6 bg-yellow-50 p-4 rounded-lg border border-yellow-200 text-sm text-yellow-800">
-                <p><strong>Nota:</strong> Si estás usando Gmail, asegúrate de haber generado una "Contraseña de Aplicación".</p>
+            
+             <div className="bg-white p-6 rounded-xl shadow border border-slate-200">
+                 <h3 className="text-lg font-bold text-slate-800 mb-4 flex items-center">
+                    <Wifi size={20} className="mr-2 text-indigo-600" /> Diagnóstico de Red
+                </h3>
+                <p className="text-sm text-slate-500 mb-4">
+                    Comprueba si el servidor puede conectarse con Gmail (Puerto 465 y 587).
+                </p>
+                <Button variant="secondary" fullWidth onClick={handleCheckConnectivity} isLoading={debugLoading}>
+                    Chequear Conexión con Gmail
+                </Button>
+            </div>
+
+            <div className="bg-yellow-50 p-4 rounded-lg border border-yellow-200 text-sm text-yellow-800">
+                <p><strong>Nota:</strong> Si usas Gmail, asegúrate de haber generado una "Contraseña de Aplicación" y no usar tu contraseña normal.</p>
             </div>
         </div>
       ) : (
