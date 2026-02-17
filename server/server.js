@@ -37,14 +37,33 @@ const PASSWORDS = {
 };
 
 // --- EMAIL CONFIG (NODEMAILER) ---
+// Configuración robusta para depuración
 const transporter = nodemailer.createTransport({
   host: process.env.SMTP_HOST,
-  port: process.env.SMTP_PORT || 587,
-  secure: process.env.SMTP_SECURE === 'true', // true for 465, false for other ports
+  port: parseInt(process.env.SMTP_PORT || '587'),
+  secure: process.env.SMTP_SECURE === 'true', // true para 465, false para otros
   auth: {
     user: process.env.SMTP_USER,
     pass: process.env.SMTP_PASS,
   },
+  // Habilitar logs detallados para ver donde se atasca
+  logger: true, 
+  debug: true,
+  tls: {
+      rejectUnauthorized: false // Ayuda en entornos de desarrollo local
+  },
+  connectionTimeout: 10000, // 10 segundos timeout para no quedarse colgado eternamente
+  greetingTimeout: 5000,
+  socketTimeout: 10000
+});
+
+// Verificar conexión al iniciar (Async)
+transporter.verify(function (error, success) {
+  if (error) {
+    console.error('❌ Error de conexión SMTP (Verifica tus credenciales y puerto):', error);
+  } else {
+    console.log('✅ Servidor SMTP conectado y listo para enviar correos.');
+  }
 });
 
 // Helper to send email
@@ -82,7 +101,12 @@ async function sendWelcomeEmail(to, name, dni, password) {
     `
   };
 
-  await transporter.sendMail(mailOptions);
+  try {
+    const info = await transporter.sendMail(mailOptions);
+    console.log("Email enviado: ", info.messageId);
+  } catch (error) {
+    console.error("Error enviando email de bienvenida:", error);
+  }
 }
 
 // --- HELPERS ---
@@ -343,20 +367,26 @@ app.get('/api/admin/graduates', async (req, res) => {
 
 // DEBUG: Test Email
 app.post('/api/debug/email', async (req, res) => {
+  console.log("📨 [DEBUG] Intentando enviar email a:", req.body.email);
   try {
     const { email } = req.body;
-    if (!process.env.SMTP_USER) return res.status(400).json({ error: 'SMTP no configurado en .env' });
+    if (!process.env.SMTP_USER) {
+        console.error("❌ SMTP User no configurado");
+        return res.status(400).json({ error: 'SMTP no configurado en .env' });
+    }
     
-    await transporter.sendMail({
+    const info = await transporter.sendMail({
       from: process.env.SMTP_FROM,
       to: email,
       subject: '🧪 Prueba de Correo - Graduación',
       text: 'Si lees esto, el sistema de correos funciona correctamente.'
     });
-    res.json({ success: true });
+    
+    console.log("✅ [DEBUG] Email enviado exitosamente. ID:", info.messageId);
+    res.json({ success: true, messageId: info.messageId });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: err.message });
+    console.error("❌ [DEBUG] Error enviando email:", err);
+    res.status(500).json({ error: err.message || "Timeout o error de conexión SMTP" });
   }
 });
 
