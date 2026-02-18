@@ -87,9 +87,10 @@ export const api = {
       tiene_cena: cart.basePrice === PRICES.GRADUATE_BASE || cart.basePrice === PRICES.GUEST_FULL,
       tiene_barra: true,
       tiene_bus: cart.bus,
-      estado_cena: false,
-      estado_bus: false,
-      estado_barra: false,
+      used_cena: false,
+      used_barra: false,
+      used_bus_ida: false,
+      used_bus_vuelta: false,
       ...({ inviter_id: cart.graduateId } as any) // store hidden field for logic
     };
 
@@ -159,6 +160,16 @@ export const api = {
     return res.json();
   },
 
+  // NEW: Get All Tickets (Guests + Grads)
+  getAllTickets: async (): Promise<Ticket[]> => {
+    if (USE_MOCK_API) {
+      await delay(500);
+      return sessionTickets;
+    }
+    const res = await fetch(`${API_URL}/admin/tickets`);
+    return res.json();
+  },
+
   addGraduate: async (data: Partial<Graduate>): Promise<{success: boolean, password?: string}> => {
     if (USE_MOCK_API) {
       await delay(500);
@@ -185,6 +196,18 @@ export const api = {
     });
     if (!res.ok) throw new Error("Failed");
     return res.json();
+  },
+
+  // NEW: Delete Graduate
+  deleteGraduate: async (id: string | number): Promise<void> => {
+     if (USE_MOCK_API) {
+         sessionGraduates = sessionGraduates.filter(g => g.id !== id);
+         return;
+     }
+     const res = await fetch(`${API_URL}/admin/graduates/${id}`, {
+         method: 'DELETE'
+     });
+     if (!res.ok) throw new Error("Could not delete");
   },
 
   scanTicket: async (uuid: string, mode: ScanMode): Promise<ScanResult> => {
