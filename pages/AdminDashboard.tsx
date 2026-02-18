@@ -14,6 +14,22 @@ interface AdminDashboardProps {
   onLogout: () => void;
 }
 
+// Component outside to prevent re-renders
+const StatsBar = ({ label, value, max, colorClass }: { label: string, value: number, max: number, colorClass: string }) => {
+    const percentage = max > 0 ? (value / max) * 100 : 0;
+    return (
+        <div className="mb-4">
+            <div className="flex justify-between text-sm mb-1 font-bold text-slate-600">
+                <span>{label}</span>
+                <span>{value} ({percentage.toFixed(0)}%)</span>
+            </div>
+            <div className="w-full bg-slate-200 rounded-full h-3 overflow-hidden">
+                <div className={`h-full rounded-full ${colorClass}`} style={{ width: `${percentage}%` }}></div>
+            </div>
+        </div>
+    );
+};
+
 export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onScan, onLogout }) => {
   const [stats, setStats] = useState<AdminStats | null>(null);
   const [graduates, setGraduates] = useState<Graduate[]>([]);
@@ -101,7 +117,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onScan, onLogout
       );
       
       // 2. Get Graduate's own ticket (usually by checking if inviter_id matches self, or implicitly if not stored)
-      // Note: Our backend stores 'inviter_id' as 'graduateId' for Graduates too in webhook.
       const ownTicket = tickets.find(t => 
           t.type === 'GRADUATE' && 
           String((t as any).inviter_id) === String(gradId)
@@ -111,23 +126,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onScan, onLogout
   };
 
   const inputClass = "border border-slate-300 p-2 rounded bg-white text-slate-900 focus:ring-2 focus:ring-indigo-500 outline-none w-full";
-
-  // --- SUB-COMPONENTS ---
-  
-  const StatsBar = ({ label, value, max, colorClass }: { label: string, value: number, max: number, colorClass: string }) => {
-      const percentage = max > 0 ? (value / max) * 100 : 0;
-      return (
-          <div className="mb-4">
-              <div className="flex justify-between text-sm mb-1 font-bold text-slate-600">
-                  <span>{label}</span>
-                  <span>{value} ({percentage.toFixed(0)}%)</span>
-              </div>
-              <div className="w-full bg-slate-200 rounded-full h-3 overflow-hidden">
-                  <div className={`h-full rounded-full ${colorClass}`} style={{ width: `${percentage}%` }}></div>
-              </div>
-          </div>
-      );
-  };
 
   return (
     <div className="max-w-7xl mx-auto px-4 pb-20">
