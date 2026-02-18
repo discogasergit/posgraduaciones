@@ -292,8 +292,6 @@ app.get('/api/admin/stats', async (req, res) => {
     const totalBus = await Ticket.countDocuments({ tiene_bus: true });
     const graduadosRegistrados = await Graduate.countDocuments({});
 
-    console.log(`📊 [STATS] G: ${entradasGraduados} | I: ${entradasInvitados} | Rev: ${revenue}`);
-
     res.json({
       total_recaudado: revenue,
       entradas_graduados: entradasGraduados,
@@ -325,6 +323,30 @@ app.get('/api/admin/graduates', async (req, res) => {
     const grads = await Graduate.find().sort({ nombre: 1 });
     res.json(grads);
   } catch (err) { res.status(500).json([]); }
+});
+
+// NEW: Delete Graduate
+app.delete('/api/admin/graduates/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const grad = await Graduate.findById(id);
+        if (!grad) return res.status(404).json({ error: 'Not found' });
+        
+        // Optional: Block if Paid
+        // if (grad.pagado) return res.status(400).json({ error: 'Cannot delete paid graduate' });
+
+        await Graduate.findByIdAndDelete(id);
+        res.json({ success: true });
+    } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// NEW: Get All Tickets
+app.get('/api/admin/tickets', async (req, res) => {
+    try {
+        // Return latest tickets first
+        const tickets = await Ticket.find().sort({ _id: -1 }).limit(300); 
+        res.json(tickets);
+    } catch (err) { res.status(500).json([]); }
 });
 
 // --- DEBUG ---
