@@ -47,11 +47,6 @@ function createTransporter() {
     });
 }
 
-async function sendWelcomeEmail(to, name, dni, password) {
-  // Mock function for brevity in this update
-  console.log(`[EMAIL] To: ${to} Pass: ${password}`);
-}
-
 // --- HELPERS ---
 function encrypt3DES(str, key) {
   const secretKey = Buffer.from(key, 'base64');
@@ -85,7 +80,7 @@ app.post('/api/graduate/check', async (req, res) => {
 
 app.get('/api/graduate/:id/guests', async (req, res) => {
   try {
-    const tickets = await Ticket.find({ inviter_id: req.params.id, type: 'GUEST' });
+    const tickets = await Ticket.find({ inviter_id: req.params.id, type: { $regex: /^GUEST$/i } });
     res.json(tickets.map(t => t.nombre_titular));
   } catch (err) {
     res.status(500).json([]);
@@ -98,7 +93,13 @@ app.post('/api/guest/check-code', async (req, res) => {
     if (!code) return res.json({ valid: false });
     const grad = await Graduate.findOne({ codigo_invitacion: code });
     if (!grad) return res.json({ valid: false });
-    const count = await Ticket.countDocuments({ inviter_id: grad._id.toString(), type: 'GUEST' });
+    
+    // Count existing guests for this inviter (Case insensitive)
+    const count = await Ticket.countDocuments({ 
+        inviter_id: grad._id.toString(), 
+        type: { $regex: /^GUEST$/i } 
+    });
+    
     if (count >= 3) return res.json({ valid: false, error: 'Limit Reached' });
     res.json({ valid: true, graduateId: grad._id, remaining: 3 - count });
   } catch (err) {
@@ -168,10 +169,13 @@ app.post('/api/payment/webhook', async (req, res) => {
       });
     }
 
-    await Ticket.create({
+    // Force Type to Uppercase to ensure consistency
+    const finalType = (cart.type || 'GUEST').toUpperCase();
+
+    const newTicket = await Ticket.create({
       uuid: ticketUUID,
       order_id: orderId,
-      type: cart.type, // Should be 'GUEST' or 'GRADUATE'
+      type: finalType, 
       inviter_id: cart.graduateId,
       nombre_titular: cart.guestName,
       tiene_cena: (cart.basePrice >= 85),
@@ -179,10 +183,12 @@ app.post('/api/payment/webhook', async (req, res) => {
       tiene_bus: cart.bus 
     });
 
+    console.log("✅ Ticket Created in DB:", newTicket);
+
     await Order.findOneAndUpdate({ order_id: orderId }, { status: 'PAID' });
     res.status(200).send('OK');
   } catch(e) {
-     console.error("Webhook Error", e);
+     console.error("❌ Webhook Error:", e);
      res.status(500).send('Error');
   }
 });
@@ -198,27 +204,33 @@ app.post('/api/admin/scan', async (req, res) => {
     // Try finding exact, then case insensitive
     let ticket = await Ticket.findOne({ uuid: uuid });
     if(!ticket) {
-        // Fallback for manual input
          ticket = await Ticket.findOne({ uuid: { $regex: new RegExp(`^${uuid}`, 'i') } });
     }
 
     if (!ticket) {
         console.log("❌ Ticket NO encontrado en DB");
-        return res.json({ success: false, message: 'Ticket NO Existe' });
+        return res.json({ success: false, message: 'TICKET NO EXISTE' });
     }
 
-    console.log(`📋 [TICKET DATA] Titular: ${ticket.nombre_titular} | Bus: ${ticket.tiene_bus} | Cena: ${ticket.tiene_cena}`);
+    console.log(`📋 [TICKET] Titular: ${ticket.nombre_titular} | Type: ${ticket.type} | Bus: ${ticket.tiene_bus} | Cena: ${ticket.tiene_cena}`);
 
     // --- CHECK ENTITLEMENTS ---
 
     // 1. Check CENA
     if (mode === 'CENA' && !ticket.tiene_cena) {
-        return res.json({ success: false, message: 'No incluye Cena' });
+        return res.json({ success: false, message: 'NO INCLUYE CENA' });
     }
 
-    // 2. Check BUS (Any bus usage requires ticket.tiene_bus to be true)
+    // 2. Check BUS 
     if ((mode === 'BUS_IDA' || mode === 'BUS_VUELTA') && !ticket.tiene_bus) {
-        return res.json({ success: false, message: 'No incluye Bus' });
+        return res.json({ success: false, message: 'NO INCLUYE BUS' });
+    }
+    
+    // 3. Check BARRA (Should be included for everyone, but just in case)
+    if (mode === 'BARRA' && ticket.tiene_barra === false) {
+        // Fallback: if data is old/missing, assume true unless explicitly false?
+        // But schema default is true.
+        return res.json({ success: false, message: 'NO INCLUYE BARRA' });
     }
 
     // --- CHECK IF ALREADY USED ---
@@ -231,14 +243,17 @@ app.post('/api/admin/scan', async (req, res) => {
     else if (mode === 'BUS_VUELTA') fieldToUpdate = 'used_bus_vuelta';
 
     if (!fieldToUpdate) {
-        return res.json({ success: false, message: 'Modo Desconocido' });
+        return res.json({ success: false, message: 'MODO DESCONOCIDO' });
     }
 
     if (ticket[fieldToUpdate]) {
         let msg = 'YA USADO';
         if (mode === 'BUS_IDA') msg = 'BUS IDA: YA USADO';
         if (mode === 'BUS_VUELTA') msg = 'BUS VUELTA: YA USADO';
-        return res.json({ success: false, message: msg });
+        if (mode === 'CENA') msg = 'CENA: YA USADA';
+        if (mode === 'BARRA') msg = 'COPA: YA USADA';
+        
+        return res.json({ success: false, message: msg, ticket });
     }
 
     // --- MARK AS USED ---
@@ -249,7 +264,7 @@ app.post('/api/admin/scan', async (req, res) => {
     res.json({ success: true, message: 'ACCESO PERMITIDO', ticket });
   } catch (err) {
     console.error("Scanner Error:", err);
-    res.status(500).json({ success: false, message: 'Server Error' });
+    res.status(500).json({ success: false, message: 'ERROR SERVIDOR' });
   }
 });
 
@@ -270,8 +285,10 @@ app.get('/api/admin/stats', async (req, res) => {
     ]);
     const revenue = totalRecaudadoResult.length > 0 ? totalRecaudadoResult[0].total : 0;
     
-    const entradasGraduados = await Ticket.countDocuments({ type: 'GRADUATE' });
-    const entradasInvitados = await Ticket.countDocuments({ type: 'GUEST' });
+    // Use regex to be Case Insensitive
+    const entradasGraduados = await Ticket.countDocuments({ type: { $regex: /^GRADUATE$/i } });
+    const entradasInvitados = await Ticket.countDocuments({ type: { $regex: /^GUEST$/i } });
+    
     const totalBus = await Ticket.countDocuments({ tiene_bus: true });
     const graduadosRegistrados = await Graduate.countDocuments({});
 
@@ -324,11 +341,12 @@ app.post('/api/debug/bypass-payment', async (req, res) => {
       await Graduate.findByIdAndUpdate(cart.graduateId, { pagado: true, codigo_invitacion: inviteCode });
     }
 
+    const finalType = (cart.type || 'GUEST').toUpperCase();
     const ticketUUID = crypto.randomUUID();
     const newTicket = await Ticket.create({
       uuid: ticketUUID,
       order_id: orderId,
-      type: cart.type,
+      type: finalType,
       inviter_id: cart.graduateId,
       nombre_titular: cart.guestName,
       tiene_cena: (cart.basePrice >= 85),
