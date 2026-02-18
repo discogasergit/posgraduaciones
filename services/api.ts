@@ -139,12 +139,21 @@ export const api = {
                       (guestTickets.length * PRICES.GUEST_FULL) + // approximation
                       (busTickets.length * PRICES.BUS_ADDON);
 
+      const totalAsistentes = paidGrads.length + guestTickets.length;
+      const cenaYBarra = sessionTickets.filter(t => t.tiene_cena).length;
+      const soloBarra = sessionTickets.filter(t => !t.tiene_cena).length;
+
       return {
         total_recaudado: revenue,
         entradas_graduados: paidGrads.length,
         entradas_invitados: guestTickets.length,
         total_bus: busTickets.length,
-        graduados_registrados: sessionGraduates.length
+        graduados_registrados: sessionGraduates.length,
+        total_asistentes: totalAsistentes,
+        desglose_tipos: {
+          cena_y_barra: cenaYBarra,
+          solo_barra: soloBarra
+        }
       };
     }
     const res = await fetch(`${API_URL}/admin/stats`);
