@@ -4,7 +4,7 @@ import { Html5Qrcode } from 'html5-qrcode';
 import { api } from '../services/api';
 import { ScanMode, ScanResult } from '../types';
 import { Button } from '../components/Button';
-import { ArrowLeft, XCircle, RefreshCw, Bus, Utensils, Wine, Keyboard, Camera } from 'lucide-react';
+import { ArrowLeft, XCircle, RefreshCw, Bus, Utensils, Wine, Keyboard, Camera, CheckCircle } from 'lucide-react';
 
 export const AdminScanner: React.FC<{ onBack: () => void }> = ({ onBack }) => {
   const [mode, setMode] = useState<ScanMode | null>(null);
@@ -87,7 +87,7 @@ export const AdminScanner: React.FC<{ onBack: () => void }> = ({ onBack }) => {
       setLastScan(result);
 
     } catch (e) {
-      setLastScan({ success: false, message: 'Error de Conexión' });
+      setLastScan({ success: false, message: 'ERROR DE RED' });
     } finally {
       setIsProcessing(false);
     }
@@ -146,16 +146,18 @@ export const AdminScanner: React.FC<{ onBack: () => void }> = ({ onBack }) => {
       return (
         <div className={`min-h-screen flex flex-col items-center justify-center p-6 ${lastScan.success ? 'bg-green-600' : 'bg-red-600'} text-white`}>
             <div className="bg-white p-6 rounded-full mb-6 shadow-2xl">
-                {lastScan.success ? <RefreshCw size={64} className="text-green-600" /> : <XCircle size={64} className="text-red-600" />}
+                {lastScan.success ? <CheckCircle size={64} className="text-green-600" /> : <XCircle size={64} className="text-red-600" />}
             </div>
             
             <h1 className="text-6xl font-black mb-4 tracking-tighter drop-shadow-md">
                 {lastScan.success ? 'OK' : 'ERROR'}
             </h1>
             
-            <p className="text-3xl text-center font-bold mb-8 uppercase tracking-wide bg-black/20 px-4 py-2 rounded-lg">
-                {lastScan.message}
-            </p>
+            <div className="bg-black/30 px-6 py-4 rounded-xl mb-8 w-full text-center">
+                <p className="text-3xl font-bold uppercase tracking-wide leading-tight">
+                    {lastScan.message}
+                </p>
+            </div>
             
             {/* Ticket Info or Debug Info */}
             {lastScan.ticket ? (
@@ -174,12 +176,13 @@ export const AdminScanner: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                  </div>
                </div>
             ) : (
-                <div className="mb-8 text-center opacity-70 font-mono text-sm break-all max-w-xs">
+                <div className="mb-8 text-center opacity-70 font-mono text-sm break-all max-w-xs bg-black/20 p-2 rounded">
                     Lectura: {scannedUUID}
                 </div>
             )}
             
-            <Button onClick={handleNextScan} className="w-full max-w-sm h-20 text-2xl bg-slate-900 text-white hover:bg-black font-bold shadow-2xl border-b-4 border-slate-700">
+            {/* High Contrast Button: White bg, Black text */}
+            <Button onClick={handleNextScan} className="w-full max-w-sm h-20 text-2xl bg-white text-slate-900 hover:bg-slate-200 font-bold shadow-2xl border-b-8 border-slate-300 transform transition hover:-translate-y-1">
               ESCANEAR SIGUIENTE
             </Button>
         </div>
