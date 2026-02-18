@@ -193,7 +193,7 @@ app.post('/api/payment/webhook', async (req, res) => {
   }
 });
 
-// 6. Scan Ticket (UPDATED LOGIC)
+// 6. Scan Ticket
 app.post('/api/admin/scan', async (req, res) => {
   try {
     let { uuid, mode } = req.body; // mode: CENA, BARRA, BUS_IDA, BUS_VUELTA
@@ -208,35 +208,25 @@ app.post('/api/admin/scan', async (req, res) => {
     }
 
     if (!ticket) {
-        console.log("❌ Ticket NO encontrado en DB");
         return res.json({ success: false, message: 'TICKET NO EXISTE' });
     }
 
-    console.log(`📋 [TICKET] Titular: ${ticket.nombre_titular} | Type: ${ticket.type} | Bus: ${ticket.tiene_bus} | Cena: ${ticket.tiene_cena}`);
-
     // --- CHECK ENTITLEMENTS ---
-
     // 1. Check CENA
     if (mode === 'CENA' && !ticket.tiene_cena) {
         return res.json({ success: false, message: 'NO INCLUYE CENA' });
     }
-
     // 2. Check BUS 
     if ((mode === 'BUS_IDA' || mode === 'BUS_VUELTA') && !ticket.tiene_bus) {
         return res.json({ success: false, message: 'NO INCLUYE BUS' });
     }
-    
-    // 3. Check BARRA (Should be included for everyone, but just in case)
+    // 3. Check BARRA
     if (mode === 'BARRA' && ticket.tiene_barra === false) {
-        // Fallback: if data is old/missing, assume true unless explicitly false?
-        // But schema default is true.
         return res.json({ success: false, message: 'NO INCLUYE BARRA' });
     }
 
     // --- CHECK IF ALREADY USED ---
-    
     let fieldToUpdate = '';
-    
     if (mode === 'CENA') fieldToUpdate = 'used_cena';
     else if (mode === 'BARRA') fieldToUpdate = 'used_barra';
     else if (mode === 'BUS_IDA') fieldToUpdate = 'used_bus_ida';
@@ -276,7 +266,7 @@ app.post('/api/staff/login', (req, res) => {
   res.status(401).send('Unauthorized');
 });
 
-// 8. Stats (Debugging added)
+// 8. Stats (Detailed)
 app.get('/api/admin/stats', async (req, res) => {
   try {
     const totalRecaudadoResult = await Order.aggregate([
@@ -285,17 +275,27 @@ app.get('/api/admin/stats', async (req, res) => {
     ]);
     const revenue = totalRecaudadoResult.length > 0 ? totalRecaudadoResult[0].total : 0;
     
-    // Use regex to be Case Insensitive
+    // Detailed counts
     const entradasGraduados = await Ticket.countDocuments({ type: { $regex: /^GRADUATE$/i } });
     const entradasInvitados = await Ticket.countDocuments({ type: { $regex: /^GUEST$/i } });
     
     const totalBus = await Ticket.countDocuments({ tiene_bus: true });
+    
+    const cenaYBarra = await Ticket.countDocuments({ tiene_cena: true });
+    // Assuming anyone without dinner is just Party/Barra
+    const soloBarra = await Ticket.countDocuments({ tiene_cena: false }); 
+
     const graduadosRegistrados = await Graduate.countDocuments({});
 
     res.json({
       total_recaudado: revenue,
+      total_asistentes: entradasGraduados + entradasInvitados,
       entradas_graduados: entradasGraduados,
       entradas_invitados: entradasInvitados,
+      desglose_tipos: {
+        cena_y_barra: cenaYBarra,
+        solo_barra: soloBarra
+      },
       total_bus: totalBus,
       graduados_registrados: graduadosRegistrados
     });
@@ -332,9 +332,6 @@ app.delete('/api/admin/graduates/:id', async (req, res) => {
         const grad = await Graduate.findById(id);
         if (!grad) return res.status(404).json({ error: 'Not found' });
         
-        // Optional: Block if Paid
-        // if (grad.pagado) return res.status(400).json({ error: 'Cannot delete paid graduate' });
-
         await Graduate.findByIdAndDelete(id);
         res.json({ success: true });
     } catch (err) { res.status(500).json({ error: err.message }); }
@@ -344,7 +341,7 @@ app.delete('/api/admin/graduates/:id', async (req, res) => {
 app.get('/api/admin/tickets', async (req, res) => {
     try {
         // Return latest tickets first
-        const tickets = await Ticket.find().sort({ _id: -1 }).limit(300); 
+        const tickets = await Ticket.find().sort({ _id: -1 }).limit(1000); 
         res.json(tickets);
     } catch (err) { res.status(500).json([]); }
 });
@@ -356,8 +353,6 @@ app.post('/api/debug/bypass-payment', async (req, res) => {
     const orderId = 'TEST-' + Date.now().toString().slice(-8);
     await Order.create({ order_id: orderId, amount: cart.total, status: 'PAID' });
     
-    console.log("🛠️ [BYPASS] Creating ticket Type:", cart.type);
-
     if (cart.type === 'GRADUATE') {
       let inviteCode = 'INV-' + orderId.slice(-6); 
       await Graduate.findByIdAndUpdate(cart.graduateId, { pagado: true, codigo_invitacion: inviteCode });
