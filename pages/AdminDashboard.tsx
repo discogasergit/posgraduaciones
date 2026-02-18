@@ -3,7 +3,11 @@ import React, { useEffect, useState } from 'react';
 import { api } from '../services/api';
 import { AdminStats, Graduate, Ticket } from '../types';
 import { Button } from '../components/Button';
-import { QrCode, TrendingUp, Users, Plus, RefreshCw, Mail, Beaker, Wifi, Trash2, Copy, CheckCircle, AlertCircle } from 'lucide-react';
+import { 
+    QrCode, TrendingUp, Users, Plus, RefreshCw, Mail, Beaker, Wifi, 
+    Trash2, Copy, CheckCircle, AlertCircle, ChevronDown, ChevronUp, 
+    Bus, Utensils, Wine
+} from 'lucide-react';
 
 interface AdminDashboardProps {
   onScan: () => void;
@@ -16,6 +20,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onScan, onLogout
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [loading, setLoading] = useState(true);
   const [view, setView] = useState<'LIST' | 'STATS' | 'DEBUG'>('LIST');
+  const [expandedGradId, setExpandedGradId] = useState<string | number | null>(null);
   
   // New Grad Form
   const [form, setForm] = useState({ dni: '', nombre: '', email: '', telefono: '' });
@@ -83,16 +88,46 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onScan, onLogout
       alert("Código copiado: " + text);
   };
 
-  // Helper to find guests for a graduate
-  const getGuestsForGrad = (gradId: string | number) => {
-      // Robust comparison (handle string vs number id issues)
-      return tickets.filter(t => 
+  const toggleExpand = (id: string | number) => {
+      setExpandedGradId(expandedGradId === id ? null : id);
+  };
+
+  // Helper to find tickets associated with a graduate
+  const getTicketsForGrad = (gradId: string | number) => {
+      // 1. Get Guest Tickets invited by this ID
+      const guestTickets = tickets.filter(t => 
           t.type === 'GUEST' && 
           String((t as any).inviter_id) === String(gradId)
       );
+      
+      // 2. Get Graduate's own ticket (usually by checking if inviter_id matches self, or implicitly if not stored)
+      // Note: Our backend stores 'inviter_id' as 'graduateId' for Graduates too in webhook.
+      const ownTicket = tickets.find(t => 
+          t.type === 'GRADUATE' && 
+          String((t as any).inviter_id) === String(gradId)
+      );
+
+      return { ownTicket, guestTickets };
   };
 
   const inputClass = "border border-slate-300 p-2 rounded bg-white text-slate-900 focus:ring-2 focus:ring-indigo-500 outline-none w-full";
+
+  // --- SUB-COMPONENTS ---
+  
+  const StatsBar = ({ label, value, max, colorClass }: { label: string, value: number, max: number, colorClass: string }) => {
+      const percentage = max > 0 ? (value / max) * 100 : 0;
+      return (
+          <div className="mb-4">
+              <div className="flex justify-between text-sm mb-1 font-bold text-slate-600">
+                  <span>{label}</span>
+                  <span>{value} ({percentage.toFixed(0)}%)</span>
+              </div>
+              <div className="w-full bg-slate-200 rounded-full h-3 overflow-hidden">
+                  <div className={`h-full rounded-full ${colorClass}`} style={{ width: `${percentage}%` }}></div>
+              </div>
+          </div>
+      );
+  };
 
   return (
     <div className="max-w-7xl mx-auto px-4 pb-20">
@@ -136,19 +171,59 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onScan, onLogout
       {loading ? (
         <div className="text-center py-10">Cargando datos...</div>
       ) : view === 'STATS' && stats ? (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <div className="bg-white p-6 rounded-xl shadow border-l-4 border-green-500">
-            <p className="text-sm text-slate-500 uppercase font-bold">Recaudación</p>
-            <p className="text-3xl font-bold text-slate-800">{stats.total_recaudado.toFixed(2)}€</p>
-          </div>
-          <div className="bg-white p-6 rounded-xl shadow border-l-4 border-blue-500">
-            <p className="text-sm text-slate-500 uppercase font-bold">Asistencia Total</p>
-            <p className="text-3xl font-bold text-slate-800">{stats.entradas_graduados + stats.entradas_invitados}</p>
-          </div>
-          <div className="bg-white p-6 rounded-xl shadow border-l-4 border-yellow-500">
-            <p className="text-sm text-slate-500 uppercase font-bold">Total Bus</p>
-            <p className="text-3xl font-bold text-slate-800">{stats.total_bus}</p>
-          </div>
+        <div className="space-y-6">
+            {/* Top Cards */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div className="bg-white p-6 rounded-xl shadow border-l-4 border-green-500">
+                    <p className="text-sm text-slate-500 uppercase font-bold">Recaudación</p>
+                    <p className="text-3xl font-bold text-slate-800">{stats.total_recaudado.toFixed(2)}€</p>
+                </div>
+                <div className="bg-white p-6 rounded-xl shadow border-l-4 border-blue-500">
+                    <p className="text-sm text-slate-500 uppercase font-bold">Asistencia Total</p>
+                    <p className="text-3xl font-bold text-slate-800">{stats.total_asistentes}</p>
+                    <p className="text-xs text-slate-400 mt-1">{stats.entradas_graduados} Graduados + {stats.entradas_invitados} Invitados</p>
+                </div>
+                <div className="bg-white p-6 rounded-xl shadow border-l-4 border-yellow-500">
+                    <p className="text-sm text-slate-500 uppercase font-bold">Autobuses</p>
+                    <p className="text-3xl font-bold text-slate-800">{stats.total_bus} <span className="text-sm font-normal text-slate-400">plazas</span></p>
+                </div>
+            </div>
+
+            {/* Detailed Graphs */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="bg-white p-6 rounded-xl shadow">
+                    <h3 className="font-bold text-lg mb-4 text-slate-700 border-b pb-2">Desglose de Entradas</h3>
+                    {stats.desglose_tipos && (
+                        <>
+                            <StatsBar 
+                                label="Cena + Barra Libre" 
+                                value={stats.desglose_tipos.cena_y_barra} 
+                                max={stats.total_asistentes} 
+                                colorClass="bg-indigo-600" 
+                            />
+                            <StatsBar 
+                                label="Solo Barra Libre (Fiesta)" 
+                                value={stats.desglose_tipos.solo_barra} 
+                                max={stats.total_asistentes} 
+                                colorClass="bg-purple-500" 
+                            />
+                        </>
+                    )}
+                </div>
+
+                <div className="bg-white p-6 rounded-xl shadow">
+                    <h3 className="font-bold text-lg mb-4 text-slate-700 border-b pb-2">Logística</h3>
+                    <StatsBar 
+                        label="Uso de Autobús" 
+                        value={stats.total_bus} 
+                        max={stats.total_asistentes} 
+                        colorClass="bg-yellow-500" 
+                    />
+                    <div className="mt-4 p-4 bg-slate-50 rounded-lg text-sm text-slate-600">
+                        <p><strong>Nota:</strong> Estos datos se basan en las entradas vendidas. La asistencia real se calcula con el escáner.</p>
+                    </div>
+                </div>
+            </div>
         </div>
       ) : view === 'DEBUG' ? (
         <div className="max-w-xl mx-auto space-y-6">
@@ -206,87 +281,122 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onScan, onLogout
                <h3 className="font-bold text-slate-700">Listado General de Asistentes</h3>
                <button onClick={loadData} className="text-slate-500 hover:text-indigo-600"><RefreshCw size={18}/></button>
              </div>
-             <div className="overflow-x-auto">
+             <div>
                <table className="w-full text-sm text-left text-slate-800">
                  <thead className="bg-slate-100 text-slate-700 font-bold uppercase text-xs tracking-wider">
                    <tr>
+                     <th className="p-4 w-10"></th>
                      <th className="p-4">Graduado</th>
                      <th className="p-4">Estado</th>
-                     <th className="p-4">Código Invitación</th>
-                     <th className="p-4">Invitados (Max 3)</th>
+                     <th className="p-4">Código</th>
+                     <th className="p-4">Invitados</th>
                      <th className="p-4 text-right">Acciones</th>
                    </tr>
                  </thead>
                  <tbody className="divide-y divide-slate-200">
                    {graduates.map(grad => {
-                     const myGuests = getGuestsForGrad(grad.id);
-                     const guestCount = myGuests.length;
+                     const { ownTicket, guestTickets } = getTicketsForGrad(grad.id);
+                     const guestCount = guestTickets.length;
+                     const isExpanded = expandedGradId === grad.id;
                      
                      return (
-                     <tr key={grad.id} className="hover:bg-indigo-50 transition-colors group">
-                       <td className="p-4">
-                           <div className="font-bold text-indigo-900">{grad.nombre}</div>
-                           <div className="font-mono text-xs text-slate-500">{grad.dni}</div>
-                           <div className="text-xs text-slate-400">{grad.password}</div>
-                       </td>
-                       <td className="p-4">
-                         {grad.pagado ? 
-                           <span className="flex items-center text-green-700 font-bold text-xs"><CheckCircle size={14} className="mr-1"/> PAGADO</span> : 
-                           <span className="flex items-center text-slate-400 font-bold text-xs"><AlertCircle size={14} className="mr-1"/> PENDIENTE</span>
-                         }
-                       </td>
-                       <td className="p-4 font-mono text-xs">
-                           {grad.codigo_invitacion ? (
-                               <div className="flex items-center space-x-2">
-                                   <span className="bg-slate-100 px-2 py-1 rounded border border-slate-300 select-all font-bold">
-                                       {grad.codigo_invitacion}
-                                   </span>
-                                   <button 
-                                      onClick={() => copyToClipboard(grad.codigo_invitacion!)}
-                                      className="text-indigo-500 hover:text-indigo-700" title="Copiar código"
-                                    >
-                                       <Copy size={16} />
-                                   </button>
-                               </div>
-                           ) : (
-                               <span className="text-slate-300 italic">-</span>
-                           )}
-                       </td>
-                       <td className="p-4">
-                           {grad.pagado ? (
-                               <div>
-                                   <div className="flex items-center mb-1">
-                                       <span className={`text-xs font-bold px-2 py-0.5 rounded-full mr-2 ${guestCount === 3 ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'}`}>
-                                           {guestCount} / 3
+                     <React.Fragment key={grad.id}>
+                         <tr className={`transition-colors cursor-pointer ${isExpanded ? 'bg-indigo-50' : 'hover:bg-slate-50'}`} onClick={() => toggleExpand(grad.id)}>
+                           <td className="p-4 text-center">
+                               {isExpanded ? <ChevronUp size={16} className="text-indigo-600"/> : <ChevronDown size={16} className="text-slate-400"/>}
+                           </td>
+                           <td className="p-4">
+                               <div className="font-bold text-indigo-900">{grad.nombre}</div>
+                               <div className="font-mono text-xs text-slate-500">{grad.dni}</div>
+                           </td>
+                           <td className="p-4">
+                             {grad.pagado ? 
+                               <span className="flex items-center text-green-700 font-bold text-xs"><CheckCircle size={14} className="mr-1"/> PAGADO</span> : 
+                               <span className="flex items-center text-slate-400 font-bold text-xs"><AlertCircle size={14} className="mr-1"/> PENDIENTE</span>
+                             }
+                           </td>
+                           <td className="p-4 font-mono text-xs">
+                               {grad.codigo_invitacion ? (
+                                   <div className="flex items-center space-x-2" onClick={(e) => e.stopPropagation()}>
+                                       <span className="bg-white px-2 py-1 rounded border border-slate-300 select-all font-bold">
+                                           {grad.codigo_invitacion}
                                        </span>
+                                       <button onClick={() => copyToClipboard(grad.codigo_invitacion!)} className="text-indigo-500 hover:text-indigo-700">
+                                           <Copy size={16} />
+                                       </button>
                                    </div>
-                                   {guestCount > 0 && (
-                                       <div className="flex flex-col space-y-1">
-                                           {myGuests.map((t, idx) => (
-                                               <span key={idx} className="text-xs text-slate-600 flex items-center">
-                                                   <span className="w-1.5 h-1.5 bg-yellow-400 rounded-full mr-1.5"></span>
-                                                   {t.nombre_titular}
-                                               </span>
-                                           ))}
-                                       </div>
-                                   )}
-                               </div>
-                           ) : (
-                               <span className="text-slate-300 text-xs">Requiere Pago</span>
-                           )}
-                       </td>
-                       <td className="p-4 text-right">
-                          {!grad.pagado && (
-                              <button 
-                                onClick={() => handleDeleteGraduate(grad.id)} 
-                                className="text-red-400 hover:text-red-600 hover:bg-red-50 p-2 rounded transition"
-                                title="Borrar Reserva"
-                              >
-                                  <Trash2 size={18} />
-                              </button>
-                          )}
-                       </td>
-                     </tr>
+                               ) : '-'}
+                           </td>
+                           <td className="p-4">
+                               {grad.pagado ? (
+                                   <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${guestCount === 3 ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'}`}>
+                                       {guestCount} / 3
+                                   </span>
+                               ) : '-'}
+                           </td>
+                           <td className="p-4 text-right" onClick={(e) => e.stopPropagation()}>
+                              {!grad.pagado && (
+                                  <button onClick={() => handleDeleteGraduate(grad.id)} className="text-red-400 hover:text-red-600 p-2 rounded hover:bg-red-50">
+                                      <Trash2 size={18} />
+                                  </button>
+                              )}
+                           </td>
+                         </tr>
+                         
+                         {/* EXPANDED ROW */}
+                         {isExpanded && (
+                             <tr className="bg-indigo-50">
+                                 <td colSpan={6} className="p-4 border-b border-indigo-100">
+                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pl-10">
+                                         {/* Contact Details */}
+                                         <div className="space-y-2 text-sm text-slate-700">
+                                             <h4 className="font-bold text-indigo-900 mb-2 border-b border-indigo-200 pb-1">Datos de Contacto</h4>
+                                             <p><Mail size={14} className="inline mr-2 text-slate-400"/> {grad.email || 'Sin email'}</p>
+                                             <p><Wifi size={14} className="inline mr-2 text-slate-400"/> {grad.telefono || 'Sin teléfono'}</p>
+                                             <p><QrCode size={14} className="inline mr-2 text-slate-400"/> Pass: <span className="font-mono">{grad.password}</span></p>
+                                         </div>
+
+                                         {/* Tickets Details */}
+                                         <div>
+                                             <h4 className="font-bold text-indigo-900 mb-2 border-b border-indigo-200 pb-1 text-sm">Entradas Adquiridas</h4>
+                                             <div className="space-y-2">
+                                                 {/* Own Ticket */}
+                                                 {ownTicket && (
+                                                     <div className="bg-white p-2 rounded border border-indigo-100 shadow-sm flex justify-between items-center">
+                                                         <div>
+                                                             <span className="text-xs font-bold bg-indigo-100 text-indigo-800 px-1 rounded mr-2">GRAD</span>
+                                                             <span className="text-sm font-medium">{ownTicket.nombre_titular}</span>
+                                                         </div>
+                                                         <div className="flex space-x-2">
+                                                             {ownTicket.tiene_bus && <span title="Bus"><Bus size={16} className="text-yellow-600" /></span>}
+                                                             {ownTicket.tiene_cena && <span title="Cena"><Utensils size={16} className="text-green-600" /></span>}
+                                                             {ownTicket.tiene_barra && <span title="Barra"><Wine size={16} className="text-purple-600" /></span>}
+                                                         </div>
+                                                     </div>
+                                                 )}
+                                                 
+                                                 {/* Guests */}
+                                                 {guestTickets.map((t) => (
+                                                     <div key={t.uuid} className="bg-white p-2 rounded border border-slate-200 shadow-sm flex justify-between items-center ml-4">
+                                                         <div>
+                                                             <span className="text-xs font-bold bg-yellow-100 text-yellow-800 px-1 rounded mr-2">INV</span>
+                                                             <span className="text-sm text-slate-600">{t.nombre_titular}</span>
+                                                         </div>
+                                                         <div className="flex space-x-2">
+                                                             {t.tiene_bus && <span title="Bus"><Bus size={16} className="text-yellow-600" /></span>}
+                                                             {t.tiene_cena && <span title="Cena"><Utensils size={16} className="text-green-600" /></span>}
+                                                             {t.tiene_barra && <span title="Barra"><Wine size={16} className="text-purple-600" /></span>}
+                                                         </div>
+                                                     </div>
+                                                 ))}
+                                                 {guestTickets.length === 0 && !ownTicket && <p className="text-xs text-slate-400 italic">Sin entradas generadas</p>}
+                                             </div>
+                                         </div>
+                                     </div>
+                                 </td>
+                             </tr>
+                         )}
+                     </React.Fragment>
                    )})}
                  </tbody>
                </table>
