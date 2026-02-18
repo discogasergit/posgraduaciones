@@ -4,7 +4,7 @@ import { Html5Qrcode } from 'html5-qrcode';
 import { api } from '../services/api';
 import { ScanMode, ScanResult } from '../types';
 import { Button } from '../components/Button';
-import { ArrowLeft, XCircle, RefreshCw, Bus, Utensils, Wine, Keyboard, Camera, CheckCircle } from 'lucide-react';
+import { ArrowLeft, XCircle, RefreshCw, Bus, Utensils, Wine, Keyboard, CheckCircle } from 'lucide-react';
 
 export const AdminScanner: React.FC<{ onBack: () => void }> = ({ onBack }) => {
   const [mode, setMode] = useState<ScanMode | null>(null);
@@ -16,6 +16,7 @@ export const AdminScanner: React.FC<{ onBack: () => void }> = ({ onBack }) => {
   const [showManual, setShowManual] = useState(false);
   
   const scannerRef = useRef<Html5Qrcode | null>(null);
+  const scanLock = useRef(false); // CRITICAL: Strict physical lock for scanning
   const scannerRegionId = "html5qr-code-full-region";
 
   // Cleanup
@@ -28,6 +29,7 @@ export const AdminScanner: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     setShowManual(false);
     setErrorMsg(null);
     setIsProcessing(false);
+    scanLock.current = false; // Reset lock
     
     // Small delay to ensure DOM is ready
     setTimeout(async () => {
@@ -40,7 +42,7 @@ export const AdminScanner: React.FC<{ onBack: () => void }> = ({ onBack }) => {
             await html5QrCode.start(
                 { facingMode: "environment" }, 
                 {
-                    fps: 10,
+                    fps: 5, // Reduced FPS to prevent cpu overload and accidental double reads
                     qrbox: { width: 250, height: 250 },
                     aspectRatio: 1.0
                 },
@@ -69,21 +71,28 @@ export const AdminScanner: React.FC<{ onBack: () => void }> = ({ onBack }) => {
   };
 
   const handleScan = async (decodedText: string) => {
-    // 1. Stop scanning immediately to prevent loops
+    // 1. PHYSICAL LOCK Check
+    if (scanLock.current) return;
+    scanLock.current = true; // Lock immediately
+
+    // 2. Stop camera
     await stopScanner();
+    
     setIsProcessing(true);
     setScannedUUID(decodedText);
 
     try {
-      // Clean UUID (remove quotes or "uuid:" prefixes if present in QR)
+      // Clean UUID
       let uuid = decodedText.trim();
       try {
         const parsed = JSON.parse(decodedText);
         if (parsed.uuid) uuid = parsed.uuid;
       } catch (e) {}
 
-      // 2. Call API
-      const result = await api.scanTicket(uuid, mode!);
+      // 3. Call API
+      if (!mode) throw new Error("Modo perdido");
+      
+      const result = await api.scanTicket(uuid, mode);
       setLastScan(result);
 
     } catch (e) {
@@ -141,7 +150,7 @@ export const AdminScanner: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     );
   }
 
-  // --- SCREEN 3: RESULT (Solid Screen, No Overlay) ---
+  // --- SCREEN 3: RESULT ---
   if (lastScan) {
       return (
         <div className={`min-h-screen flex flex-col items-center justify-center p-6 ${lastScan.success ? 'bg-green-600' : 'bg-red-600'} text-white`}>
@@ -159,7 +168,7 @@ export const AdminScanner: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                 </p>
             </div>
             
-            {/* Ticket Info or Debug Info */}
+            {/* Ticket Info */}
             {lastScan.ticket ? (
                <div className="bg-white/10 backdrop-blur-md border border-white/20 p-6 rounded-xl w-full max-w-sm mb-8 shadow-xl">
                  <p className="text-xs text-white/70 uppercase font-bold mb-1">Titular</p>
@@ -181,7 +190,6 @@ export const AdminScanner: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                 </div>
             )}
             
-            {/* High Contrast Button: White bg, Black text */}
             <Button onClick={handleNextScan} className="w-full max-w-sm h-20 text-2xl bg-white text-slate-900 hover:bg-slate-200 font-bold shadow-2xl border-b-8 border-slate-300 transform transition hover:-translate-y-1">
               ESCANEAR SIGUIENTE
             </Button>
@@ -235,10 +243,8 @@ export const AdminScanner: React.FC<{ onBack: () => void }> = ({ onBack }) => {
             </div>
         ) : (
             <>
-                {/* Camera Viewport */}
                 <div id={scannerRegionId} className="w-full h-full object-cover"></div>
                 
-                {/* Overlays */}
                 <div className="absolute bottom-10 left-0 right-0 flex flex-col items-center space-y-4 px-6">
                     <div className="bg-black/50 px-4 py-2 rounded-full text-sm animate-pulse">
                         Enfoca el código QR
