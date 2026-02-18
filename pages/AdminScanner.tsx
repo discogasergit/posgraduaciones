@@ -4,34 +4,82 @@ import { Html5Qrcode } from 'html5-qrcode';
 import { api } from '../services/api';
 import { ScanMode, ScanResult } from '../types';
 import { Button } from '../components/Button';
-import { ArrowLeft, XCircle, RefreshCw, Bus, Utensils, Wine, Keyboard, CheckCircle } from 'lucide-react';
+import { ArrowLeft, XCircle, Bus, Utensils, Wine, Keyboard, CheckCircle } from 'lucide-react';
 
 export const AdminScanner: React.FC<{ onBack: () => void }> = ({ onBack }) => {
   const [mode, setMode] = useState<ScanMode | null>(null);
   const [lastScan, setLastScan] = useState<ScanResult | null>(null);
-  const [scannedUUID, setScannedUUID] = useState<string>(''); // Debug info
+  const [scannedUUID, setScannedUUID] = useState<string>('');
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [manualInput, setManualInput] = useState('');
   const [showManual, setShowManual] = useState(false);
   
   const scannerRef = useRef<Html5Qrcode | null>(null);
-  const scanLock = useRef(false); // CRITICAL: Strict physical lock for scanning
+  const scanLock = useRef(false); 
   const scannerRegionId = "html5qr-code-full-region";
+  
+  // Ref for mode to avoid stale closure in Html5Qrcode callback
+  const modeRef = useRef<ScanMode | null>(null);
+  
+  // Ref to ignore initial scans during camera warm-up
+  const isReadyRef = useRef(false);
 
-  // Cleanup
+  // Update ref when state changes
+  useEffect(() => {
+    modeRef.current = mode;
+  }, [mode]);
+
   useEffect(() => {
     return () => { stopScanner(); };
   }, []);
+
+  // --- AUDIO FEEDBACK ---
+  const playBeep = (type: 'success' | 'error') => {
+    // Vibrate
+    if (navigator.vibrate) {
+        navigator.vibrate(type === 'success' ? 200 : [100, 50, 100]);
+    }
+
+    // Sound
+    try {
+        const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
+        if (!AudioContext) return;
+        
+        const ctx = new AudioContext();
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+
+        if (type === 'success') {
+            osc.frequency.value = 1000; // High pitch
+            osc.type = 'sine';
+        } else {
+            osc.frequency.value = 300; // Low pitch
+            osc.type = 'sawtooth';
+        }
+
+        osc.start();
+        gain.gain.exponentialRampToValueAtTime(0.00001, ctx.currentTime + 0.2);
+        setTimeout(() => {
+            osc.stop();
+            ctx.close();
+        }, 200);
+    } catch (e) {
+        console.error("Audio error", e);
+    }
+  };
 
   const startScanner = async () => {
     setLastScan(null);
     setShowManual(false);
     setErrorMsg(null);
     setIsProcessing(false);
-    scanLock.current = false; // Reset lock
+    scanLock.current = false;
+    isReadyRef.current = false; // Not ready yet
     
-    // Small delay to ensure DOM is ready
     setTimeout(async () => {
         try {
             if (scannerRef.current) return; 
@@ -42,7 +90,7 @@ export const AdminScanner: React.FC<{ onBack: () => void }> = ({ onBack }) => {
             await html5QrCode.start(
                 { facingMode: "environment" }, 
                 {
-                    fps: 5, // Reduced FPS to prevent cpu overload and accidental double reads
+                    fps: 5,
                     qrbox: { width: 250, height: 250 },
                     aspectRatio: 1.0
                 },
@@ -51,6 +99,10 @@ export const AdminScanner: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                 },
                 (errorMessage) => { /* ignore */ }
             );
+            
+            // Mark ready after 500ms to avoid cold-start ghost reads
+            setTimeout(() => { isReadyRef.current = true; }, 500);
+
         } catch (err) {
             console.error(err);
             setErrorMsg("No se pudo iniciar la cámara. Usa la entrada manual.");
@@ -63,40 +115,46 @@ export const AdminScanner: React.FC<{ onBack: () => void }> = ({ onBack }) => {
         try {
             await scannerRef.current.stop();
             await scannerRef.current.clear();
-        } catch (e) {
-            // ignore stop errors
-        }
+        } catch (e) { }
         scannerRef.current = null;
     }
   };
 
   const handleScan = async (decodedText: string) => {
-    // 1. PHYSICAL LOCK Check
-    if (scanLock.current) return;
-    scanLock.current = true; // Lock immediately
+    // 1. CHECKS
+    if (!isReadyRef.current) return; // Ignore cold start reads
+    if (scanLock.current) return;    // Physical lock
+    
+    // Check if mode exists via REF (solves stale closure "Network Error" / "Unknown Mode")
+    const currentMode = modeRef.current;
+    if (!currentMode) return;
 
-    // 2. Stop camera
+    // 2. LOCK & STOP
+    scanLock.current = true;
     await stopScanner();
     
     setIsProcessing(true);
     setScannedUUID(decodedText);
 
     try {
-      // Clean UUID
       let uuid = decodedText.trim();
       try {
         const parsed = JSON.parse(decodedText);
         if (parsed.uuid) uuid = parsed.uuid;
       } catch (e) {}
 
-      // 3. Call API
-      if (!mode) throw new Error("Modo perdido");
+      // 3. API CALL
+      const result = await api.scanTicket(uuid, currentMode);
       
-      const result = await api.scanTicket(uuid, mode);
+      // 4. FEEDBACK
+      if (result.success) playBeep('success');
+      else playBeep('error');
+      
       setLastScan(result);
 
     } catch (e) {
       setLastScan({ success: false, message: 'ERROR DE RED' });
+      playBeep('error');
     } finally {
       setIsProcessing(false);
     }
@@ -105,6 +163,8 @@ export const AdminScanner: React.FC<{ onBack: () => void }> = ({ onBack }) => {
   const handleManualSubmit = async (e: React.FormEvent) => {
       e.preventDefault();
       if(manualInput.length < 4) return;
+      // Manually set refs to ensure bypass works
+      isReadyRef.current = true; 
       handleScan(manualInput);
   };
 
@@ -154,7 +214,7 @@ export const AdminScanner: React.FC<{ onBack: () => void }> = ({ onBack }) => {
   if (lastScan) {
       return (
         <div className={`min-h-screen flex flex-col items-center justify-center p-6 ${lastScan.success ? 'bg-green-600' : 'bg-red-600'} text-white`}>
-            <div className="bg-white p-6 rounded-full mb-6 shadow-2xl">
+            <div className="bg-white p-6 rounded-full mb-6 shadow-2xl animate-bounce">
                 {lastScan.success ? <CheckCircle size={64} className="text-green-600" /> : <XCircle size={64} className="text-red-600" />}
             </div>
             
