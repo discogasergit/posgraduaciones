@@ -155,6 +155,9 @@ app.post('/api/payment/webhook', async (req, res) => {
     const params = JSON.parse(paramsStr);
     const orderId = params.DS_MERCHANT_ORDER;
     const cart = JSON.parse(decodeURIComponent(params.DS_MERCHANT_MERCHANTDATA));
+    
+    console.log(`💰 [WEBHOOK] Order: ${orderId} | Type: ${cart.type} | Amount: ${cart.total}`);
+
     const ticketUUID = crypto.randomUUID();
 
     if (cart.type === 'GRADUATE') {
@@ -168,17 +171,18 @@ app.post('/api/payment/webhook', async (req, res) => {
     await Ticket.create({
       uuid: ticketUUID,
       order_id: orderId,
-      type: cart.type,
+      type: cart.type, // Should be 'GUEST' or 'GRADUATE'
       inviter_id: cart.graduateId,
       nombre_titular: cart.guestName,
       tiene_cena: (cart.basePrice >= 85),
       tiene_barra: true,
-      tiene_bus: cart.bus // IMPORTANT: Saves boolean here
+      tiene_bus: cart.bus 
     });
 
     await Order.findOneAndUpdate({ order_id: orderId }, { status: 'PAID' });
     res.status(200).send('OK');
   } catch(e) {
+     console.error("Webhook Error", e);
      res.status(500).send('Error');
   }
 });
@@ -186,14 +190,21 @@ app.post('/api/payment/webhook', async (req, res) => {
 // 6. Scan Ticket (UPDATED LOGIC)
 app.post('/api/admin/scan', async (req, res) => {
   try {
-    const { uuid, mode } = req.body; // mode: CENA, BARRA, BUS_IDA, BUS_VUELTA
+    let { uuid, mode } = req.body; // mode: CENA, BARRA, BUS_IDA, BUS_VUELTA
+    uuid = uuid ? uuid.trim() : "";
     
-    console.log(`🔍 [SCANNER] UUID: ${uuid} | Mode: ${mode}`);
+    console.log(`🔍 [SCANNER] UUID: "${uuid}" | Mode: ${mode}`);
 
-    const ticket = await Ticket.findOne({ uuid });
+    // Try finding exact, then case insensitive
+    let ticket = await Ticket.findOne({ uuid: uuid });
+    if(!ticket) {
+        // Fallback for manual input
+         ticket = await Ticket.findOne({ uuid: { $regex: new RegExp(`^${uuid}`, 'i') } });
+    }
+
     if (!ticket) {
         console.log("❌ Ticket NO encontrado en DB");
-        return res.json({ success: false, message: 'Ticket Inválido' });
+        return res.json({ success: false, message: 'Ticket NO Existe' });
     }
 
     console.log(`📋 [TICKET DATA] Titular: ${ticket.nombre_titular} | Bus: ${ticket.tiene_bus} | Cena: ${ticket.tiene_cena}`);
@@ -202,14 +213,12 @@ app.post('/api/admin/scan', async (req, res) => {
 
     // 1. Check CENA
     if (mode === 'CENA' && !ticket.tiene_cena) {
-        console.log("❌ Rechazado: No tiene cena");
-        return res.json({ success: false, message: 'No tiene Cena' });
+        return res.json({ success: false, message: 'No incluye Cena' });
     }
 
     // 2. Check BUS (Any bus usage requires ticket.tiene_bus to be true)
     if ((mode === 'BUS_IDA' || mode === 'BUS_VUELTA') && !ticket.tiene_bus) {
-        console.log("❌ Rechazado: No tiene bus contratado");
-        return res.json({ success: false, message: 'NO TIENE BUS' });
+        return res.json({ success: false, message: 'No incluye Bus' });
     }
 
     // --- CHECK IF ALREADY USED ---
@@ -226,11 +235,9 @@ app.post('/api/admin/scan', async (req, res) => {
     }
 
     if (ticket[fieldToUpdate]) {
-        console.log(`❌ Rechazado: Ya usado (${fieldToUpdate})`);
-        // User friendly messages
         let msg = 'YA USADO';
-        if (mode === 'BUS_IDA') msg = 'BUS IDA YA USADO';
-        if (mode === 'BUS_VUELTA') msg = 'BUS VUELTA YA USADO';
+        if (mode === 'BUS_IDA') msg = 'BUS IDA: YA USADO';
+        if (mode === 'BUS_VUELTA') msg = 'BUS VUELTA: YA USADO';
         return res.json({ success: false, message: msg });
     }
 
@@ -254,7 +261,7 @@ app.post('/api/staff/login', (req, res) => {
   res.status(401).send('Unauthorized');
 });
 
-// 8. Stats
+// 8. Stats (Debugging added)
 app.get('/api/admin/stats', async (req, res) => {
   try {
     const totalRecaudadoResult = await Order.aggregate([
@@ -262,12 +269,14 @@ app.get('/api/admin/stats', async (req, res) => {
       { $group: { _id: null, total: { $sum: "$amount" } } }
     ]);
     const revenue = totalRecaudadoResult.length > 0 ? totalRecaudadoResult[0].total : 0;
-    const [entradasGraduados, entradasInvitados, totalBus, graduadosRegistrados] = await Promise.all([
-      Ticket.countDocuments({ type: 'GRADUATE' }),
-      Ticket.countDocuments({ type: 'GUEST' }),
-      Ticket.countDocuments({ tiene_bus: true }),
-      Graduate.countDocuments({})
-    ]);
+    
+    const entradasGraduados = await Ticket.countDocuments({ type: 'GRADUATE' });
+    const entradasInvitados = await Ticket.countDocuments({ type: 'GUEST' });
+    const totalBus = await Ticket.countDocuments({ tiene_bus: true });
+    const graduadosRegistrados = await Graduate.countDocuments({});
+
+    console.log(`📊 [STATS] G: ${entradasGraduados} | I: ${entradasInvitados} | Rev: ${revenue}`);
+
     res.json({
       total_recaudado: revenue,
       entradas_graduados: entradasGraduados,
@@ -308,6 +317,8 @@ app.post('/api/debug/bypass-payment', async (req, res) => {
     const orderId = 'TEST-' + Date.now().toString().slice(-8);
     await Order.create({ order_id: orderId, amount: cart.total, status: 'PAID' });
     
+    console.log("🛠️ [BYPASS] Creating ticket Type:", cart.type);
+
     if (cart.type === 'GRADUATE') {
       let inviteCode = 'INV-' + orderId.slice(-6); 
       await Graduate.findByIdAndUpdate(cart.graduateId, { pagado: true, codigo_invitacion: inviteCode });
