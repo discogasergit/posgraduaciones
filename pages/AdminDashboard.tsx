@@ -1,9 +1,9 @@
 
 import React, { useEffect, useState } from 'react';
 import { api } from '../services/api';
-import { AdminStats, Graduate } from '../types';
+import { AdminStats, Graduate, Ticket } from '../types';
 import { Button } from '../components/Button';
-import { ArrowLeft, QrCode, TrendingUp, Users, Plus, RefreshCw, Mail, Beaker, Wifi } from 'lucide-react';
+import { ArrowLeft, QrCode, TrendingUp, Users, Plus, RefreshCw, Mail, Beaker, Wifi, Ticket as TicketIcon, Trash2 } from 'lucide-react';
 
 interface AdminDashboardProps {
   onScan: () => void;
@@ -13,8 +13,9 @@ interface AdminDashboardProps {
 export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onScan, onLogout }) => {
   const [stats, setStats] = useState<AdminStats | null>(null);
   const [graduates, setGraduates] = useState<Graduate[]>([]);
+  const [tickets, setTickets] = useState<Ticket[]>([]);
   const [loading, setLoading] = useState(true);
-  const [view, setView] = useState<'STATS' | 'GRADUATES' | 'DEBUG'>('STATS');
+  const [view, setView] = useState<'STATS' | 'GRADUATES' | 'TICKETS' | 'DEBUG'>('STATS');
   
   // New Grad Form
   const [form, setForm] = useState({ dni: '', nombre: '', email: '', telefono: '' });
@@ -27,12 +28,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onScan, onLogout
   const loadData = async () => {
     setLoading(true);
     try {
-      const [statsData, gradsData] = await Promise.all([
+      const [statsData, gradsData, ticketsData] = await Promise.all([
         api.getStats(),
-        api.getGraduates()
+        api.getGraduates(),
+        api.getAllTickets() // Fetch Tickets
       ]);
       setStats(statsData);
       setGraduates(gradsData);
+      setTickets(ticketsData);
     } catch (e) {
       console.error(e);
     } finally {
@@ -63,6 +66,16 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onScan, onLogout
     } finally {
       setAddLoading(false);
     }
+  };
+
+  const handleDeleteGraduate = async (id: string | number) => {
+      if(!confirm("¿Seguro que quieres borrar este registro PENDIENTE?")) return;
+      try {
+          await api.deleteGraduate(id);
+          await loadData();
+      } catch(e) {
+          alert("Error al borrar");
+      }
   };
 
   const handleTestEmail = async (e: React.FormEvent) => {
@@ -101,13 +114,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onScan, onLogout
         </Button>
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-8">
          <Button 
             variant={view === 'STATS' ? 'primary' : 'outline'} 
             onClick={() => setView('STATS')}
             className={view === 'STATS' ? "bg-slate-800 hover:bg-slate-900" : ""}
           >
-           <TrendingUp size={18} className="mr-2" /> Estadísticas
+           <TrendingUp size={18} className="mr-2" /> Stats
          </Button>
          <Button 
             variant={view === 'GRADUATES' ? 'primary' : 'outline'} 
@@ -117,11 +130,18 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onScan, onLogout
            <Users size={18} className="mr-2" /> Graduados
          </Button>
          <Button 
+            variant={view === 'TICKETS' ? 'primary' : 'outline'} 
+            onClick={() => setView('TICKETS')}
+            className={view === 'TICKETS' ? "bg-slate-800 hover:bg-slate-900" : ""}
+          >
+           <TicketIcon size={18} className="mr-2" /> Entradas
+         </Button>
+         <Button 
             variant={view === 'DEBUG' ? 'primary' : 'outline'} 
             onClick={() => setView('DEBUG')}
             className={view === 'DEBUG' ? "bg-slate-800 hover:bg-slate-900" : ""}
           >
-           <Beaker size={18} className="mr-2" /> Depuración
+           <Beaker size={18} className="mr-2" /> Debug
          </Button>
          <Button 
             onClick={onScan}
@@ -157,9 +177,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onScan, onLogout
                 <h3 className="text-lg font-bold text-slate-800 mb-4 flex items-center">
                     <Mail size={20} className="mr-2 text-indigo-600" /> Probar Envío de Emails
                 </h3>
-                <p className="text-sm text-slate-500 mb-4">
-                    Envía un correo de prueba para verificar que la configuración SMTP es correcta.
-                </p>
                 <form onSubmit={handleTestEmail} className="space-y-4">
                     <input 
                         type="email" 
@@ -174,29 +191,56 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onScan, onLogout
                     </Button>
                 </form>
             </div>
-            
              <div className="bg-white p-6 rounded-xl shadow border border-slate-200">
                  <h3 className="text-lg font-bold text-slate-800 mb-4 flex items-center">
                     <Wifi size={20} className="mr-2 text-indigo-600" /> Diagnóstico de Red
                 </h3>
-                <p className="text-sm text-slate-500 mb-4">
-                    Comprueba si el servidor puede conectarse con Gmail (Puerto 465 y 587).
-                </p>
                 <Button variant="secondary" fullWidth onClick={handleCheckConnectivity} isLoading={debugLoading}>
                     Chequear Conexión con Gmail
                 </Button>
             </div>
-
-            <div className="bg-yellow-50 p-4 rounded-lg border border-yellow-200 text-sm text-yellow-800">
-                <p><strong>Nota:</strong> Si usas Gmail, asegúrate de haber generado una "Contraseña de Aplicación" y no usar tu contraseña normal.</p>
-            </div>
         </div>
+      ) : view === 'TICKETS' ? (
+         <div className="bg-white rounded-xl shadow overflow-hidden border border-slate-200">
+             <div className="p-4 bg-slate-50 border-b border-slate-200 flex justify-between items-center">
+               <h3 className="font-bold text-slate-700">Entradas Vendidas (Todos)</h3>
+               <button onClick={loadData} className="text-slate-500 hover:text-indigo-600"><RefreshCw size={18}/></button>
+             </div>
+             <div className="overflow-x-auto">
+               <table className="w-full text-sm text-left text-slate-800">
+                 <thead className="bg-slate-100 text-slate-700 font-bold">
+                   <tr>
+                     <th className="p-3">Titular</th>
+                     <th className="p-3">Tipo</th>
+                     <th className="p-3">Bus</th>
+                     <th className="p-3">Cena</th>
+                     <th className="p-3">UUID</th>
+                   </tr>
+                 </thead>
+                 <tbody className="divide-y divide-slate-200">
+                   {tickets.map(t => (
+                     <tr key={t.uuid} className="hover:bg-indigo-50">
+                       <td className="p-3 font-bold">{t.nombre_titular}</td>
+                       <td className="p-3">
+                            <span className={`px-2 py-1 rounded text-xs font-bold ${t.type === 'GRADUATE' ? 'bg-indigo-100 text-indigo-700' : 'bg-yellow-100 text-yellow-800'}`}>
+                                {t.type}
+                            </span>
+                       </td>
+                       <td className="p-3">{t.tiene_bus ? '✅' : '❌'}</td>
+                       <td className="p-3">{t.tiene_cena ? '✅' : '❌'}</td>
+                       <td className="p-3 font-mono text-xs text-slate-400">{t.uuid.slice(0,8)}...</td>
+                     </tr>
+                   ))}
+                 </tbody>
+               </table>
+             </div>
+         </div>
       ) : (
         <div className="space-y-8">
           {/* Add Form */}
           <div className="bg-white p-6 rounded-xl shadow border border-slate-200">
             <h3 className="text-lg font-bold text-slate-800 mb-4 flex items-center">
-              <Plus size={20} className="mr-2 text-indigo-600" /> Alta Rápida & Envío de Claves
+              <Plus size={20} className="mr-2 text-indigo-600" /> Alta Rápida
             </h3>
             <form onSubmit={handleAddGraduate} className="grid grid-cols-1 md:grid-cols-5 gap-4 items-end">
               <div>
@@ -236,36 +280,27 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onScan, onLogout
           {/* List */}
           <div className="bg-white rounded-xl shadow overflow-hidden border border-slate-200">
              <div className="p-4 bg-slate-50 border-b border-slate-200 flex justify-between items-center">
-               <h3 className="font-bold text-slate-700">Lista Completa ({graduates.length})</h3>
+               <h3 className="font-bold text-slate-700">Lista Graduados ({graduates.length})</h3>
                <button onClick={loadData} className="text-slate-500 hover:text-indigo-600"><RefreshCw size={18}/></button>
              </div>
              <div className="overflow-x-auto">
                <table className="w-full text-sm text-left text-slate-800">
                  <thead className="bg-slate-100 text-slate-700 font-bold">
                    <tr>
-                     <th className="p-3 border-b border-slate-200">DNI</th>
-                     <th className="p-3 border-b border-slate-200">Nombre</th>
-                     <th className="p-3 border-b border-slate-200">Email</th>
-                     <th className="p-3 border-b border-slate-200">Teléfono</th>
-                     <th className="p-3 border-b border-slate-200">Pass (Autogen)</th>
-                     <th className="p-3 border-b border-slate-200">Estado</th>
-                     <th className="p-3 border-b border-slate-200">Cód. Invitación</th>
+                     <th className="p-3">DNI</th>
+                     <th className="p-3">Nombre</th>
+                     <th className="p-3">Email</th>
+                     <th className="p-3">Pass</th>
+                     <th className="p-3">Estado</th>
+                     <th className="p-3">Acciones</th>
                    </tr>
                  </thead>
                  <tbody className="divide-y divide-slate-200">
-                   {graduates.length === 0 && (
-                     <tr>
-                       <td colSpan={7} className="p-8 text-center text-slate-400">
-                         No hay graduados registrados.
-                       </td>
-                     </tr>
-                   )}
                    {graduates.map(grad => (
                      <tr key={grad.id} className="hover:bg-indigo-50 transition-colors">
                        <td className="p-3 font-mono font-medium">{grad.dni}</td>
                        <td className="p-3 font-medium">{grad.nombre}</td>
                        <td className="p-3 text-slate-600">{grad.email || '-'}</td>
-                       <td className="p-3 text-slate-600">{grad.telefono || '-'}</td>
                        <td className="p-3 text-slate-400 font-mono text-xs">{grad.password}</td>
                        <td className="p-3">
                          {grad.pagado ? 
@@ -273,8 +308,16 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onScan, onLogout
                            <span className="bg-slate-100 text-slate-500 px-2 py-1 rounded text-xs border border-slate-200">PENDIENTE</span>
                          }
                        </td>
-                       <td className="p-3 font-mono text-indigo-600 font-bold">
-                         {grad.codigo_invitacion || '-'}
+                       <td className="p-3 text-center">
+                          {!grad.pagado && (
+                              <button 
+                                onClick={() => handleDeleteGraduate(grad.id)} 
+                                className="text-red-500 hover:text-red-700 hover:bg-red-50 p-2 rounded transition"
+                                title="Borrar Reserva Pendiente"
+                              >
+                                  <Trash2 size={16} />
+                              </button>
+                          )}
                        </td>
                      </tr>
                    ))}
