@@ -41,14 +41,14 @@ export const api = {
     return res.json();
   },
 
-  checkInvitationCode: async (code: string): Promise<{ valid: boolean, graduateId?: number, remainingSlots?: number }> => {
+  checkInvitationCode: async (code: string): Promise<{ valid: boolean, graduateId?: string | number, remainingSlots?: number }> => {
     if (USE_MOCK_API) {
       await delay(600);
       const grad = sessionGraduates.find(g => g.codigo_invitacion === code);
       if (grad) {
           const used = sessionTickets.filter(t => (t as any).inviter_id === grad.id).length;
           if (used >= 3) return { valid: false };
-          return { valid: true, graduateId: grad.id as number, remainingSlots: 3 - used };
+          return { valid: true, graduateId: grad.id, remainingSlots: 3 - used };
       }
       return { valid: false };
     }
