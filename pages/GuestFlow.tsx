@@ -14,7 +14,7 @@ export const GuestFlow: React.FC<GuestFlowProps> = ({ onBack, onProceedToCheckou
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [step, setStep] = useState<'CODE' | 'OPTIONS'>('CODE');
-  const [inviterId, setInviterId] = useState<number | null>(null);
+  const [inviterId, setInviterId] = useState<string | number | null>(null);
   
   // Form State
   const [name, setName] = useState('');
