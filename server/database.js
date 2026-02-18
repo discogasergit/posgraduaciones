@@ -40,7 +40,8 @@ const orderSchema = new mongoose.Schema({
 const ticketSchema = new mongoose.Schema({
   uuid: { type: String, required: true, unique: true },
   order_id: { type: String },
-  type: { type: String, enum: ['GRADUATE', 'GUEST'] },
+  // Removed strict enum to prevent validation errors on 'Guest' vs 'GUEST'
+  type: { type: String, default: 'GRADUATE' }, 
   inviter_id: { type: String }, 
   nombre_titular: { type: String },
   
@@ -52,8 +53,8 @@ const ticketSchema = new mongoose.Schema({
   // Usage Tracking
   used_cena: { type: Boolean, default: false },
   used_barra: { type: Boolean, default: false },
-  used_bus_ida: { type: Boolean, default: false },    // Changed from generic used_bus
-  used_bus_vuelta: { type: Boolean, default: false }  // Changed from generic used_bus
+  used_bus_ida: { type: Boolean, default: false },    
+  used_bus_vuelta: { type: Boolean, default: false }  
 });
 
 // --- MODELS ---
